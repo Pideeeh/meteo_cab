@@ -20,7 +20,7 @@ enum DataSets {
 };
 
 static string getDatasetPath(DataSets dataSets) {
-    string base = "../../../data/";
+    string base = "../../../meteo_cab/data/";
     switch (dataSets) {
         case DataSets::CLOUD_ICE:
             base += "cli";
