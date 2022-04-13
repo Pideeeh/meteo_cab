@@ -1,0 +1,12 @@
+ObjectType = Image
+NDims = 3
+BinaryData = True
+BinaryDataByteOrderMSB = False
+TransformMatrix = 1 0 0 0 1 0 0 0 1
+Offset = 0 0 0
+CenterOfRotation = 0 0 0
+ElementSpacing = 0.5 0.5 1
+DimSize = 128 128 62
+AnatomicalOrientation = ???
+ElementType = MET_UCHAR
+ElementDataFile = Teddy_128_128_62.raw
