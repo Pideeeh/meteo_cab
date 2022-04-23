@@ -9,13 +9,9 @@ add_executable(${PROJECT_NAME} MACOSX_BUNDLE
         vtkEasyTransfer.hpp
         dataSetDefinitions.h)
 
+target_link_libraries(${PROJECT_NAME} PRIVATE ${VTK_LIBRARIES})
+vtk_module_autoinit(TARGETS ${PROJECT_NAME} MODULES ${VTK_LIBRARIES})
+
 add_executable(Terrain_Vis terrainVis.cpp)
 target_link_libraries(Terrain_Vis PRIVATE ${VTK_LIBRARIES})
 vtk_module_autoinit(TARGETS Terrain_Vis MODULES ${VTK_LIBRARIES})
-
-target_link_libraries(${PROJECT_NAME}
-        PRIVATE
-        ${VTK_LIBRARIES})
-vtk_module_autoinit(
-        TARGETS ${PROJECT_NAME}
-        MODULES ${VTK_LIBRARIES})
