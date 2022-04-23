@@ -113,12 +113,12 @@ int main(int, char *[]) {
 
     vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
     renderer->SetViewport(0, 0, 0.66666, 1.0);
-    renderer->SetBackground(1, 1, 1);
+    renderer->SetBackground(0.3, 0.3, 0.3);
     renderWindow->AddRenderer(renderer);
 
     vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
     renderWindowInteractor->SetRenderWindow(renderWindow);
-    renderer->SetBackground(1, 1, 1);
+    renderer->SetBackground(0.3, 0.3, 0.3);
 
 
     // ----------------------------------------------------------------
@@ -166,7 +166,7 @@ int main(int, char *[]) {
     // read the volume data set
     // ----------------------------------------------------------------
     vtkSmartPointer<vtkMetaImageReader> reader = vtkSmartPointer<vtkMetaImageReader>::New();
-    reader->SetFileName(getDataPath("/Teddy_128_128_62.mhd").c_str());
+    reader->SetFileName(getDataPath("/data/cloudyness.mhd").c_str());
     reader->Update();
 
 
@@ -179,7 +179,7 @@ int main(int, char *[]) {
     // extract the surface with vtkMarchingCubes
     vtkSmartPointer<vtkMarchingCubes> marchingCubes = vtkSmartPointer<vtkMarchingCubes>::New();
     marchingCubes->SetInputData(volumeData);
-    marchingCubes->SetValue(0, 40);
+    marchingCubes->SetValue(0, 0.003);
 
     // apply a vtkPolyDataMapper to the output of marching cubes
     vtkSmartPointer<vtkPolyDataMapper> polyDataMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -195,8 +195,8 @@ int main(int, char *[]) {
     // create a 2D slider
     vtkSmartPointer<vtkSliderRepresentation2D> sliderRep = vtkSmartPointer<vtkSliderRepresentation2D>::New();
     sliderRep->SetMinimumValue(0);
-    sliderRep->SetMaximumValue(255);
-    sliderRep->SetValue(40);
+    sliderRep->SetMaximumValue(0.003);
+    sliderRep->SetValue(0.001);
     sliderRep->SetTitleText("Isovalue");
     // set color properties
     sliderRep->GetSliderProperty()->SetColor(0.2, 0.2, 0.6);    // Change the color of the knob that slides
@@ -241,9 +241,9 @@ int main(int, char *[]) {
 
     // create transfer function
     vtkSmartPointer<vtkEasyTransfer> easyTransfer = vtkSmartPointer<vtkEasyTransfer>::New();
-    easyTransfer->SetColormapHeat();        // set initial color map
-    easyTransfer->SetColorRange(50, 255);    // set the value range that is mapped to color
-    easyTransfer->SetOpacityRange(50, 255);    // set the value range that is mapped to opacity
+    easyTransfer->SetColorUniform(1.0,1.0,1.0);        // set initial color map
+    easyTransfer->SetColorRange(0, 0.00507);    // set the value range that is mapped to color
+    easyTransfer->SetOpacityRange(0, 0.00507);    // set the value range that is mapped to opacity
     easyTransfer->RefreshImage();
 
     // assign transfer function to volume properties
@@ -259,6 +259,7 @@ int main(int, char *[]) {
     // get renderer for the transfer function editor or a white background
     vtkSmartPointer<vtkRenderer> transferRenderer = easyTransfer->GetRenderer();
     transferRenderer->SetViewport(0.66666, 0, 1, 1);
+
 
 
     // ----------------------------------------------------------------
