@@ -5,7 +5,10 @@ PROJECT(meteocab)
 find_package(VTK REQUIRED)
 
 add_executable(${PROJECT_NAME} MACOSX_BUNDLE
-        ${PROJECT_NAME}.cpp vtkEasyTransfer.hpp dataSetDefinitions.h)
+        ${PROJECT_NAME}.cpp 
+	vtkEasyTransfer.hpp 
+	dataSetDefinitions.h
+	terrainVis.cpp)
 
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
