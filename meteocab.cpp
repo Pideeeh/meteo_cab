@@ -23,6 +23,8 @@
 #include <vtkOpenGLGPUVolumeRayCastMapper.h>
 #include <vtkVolumeProperty.h>
 
+#include "dataSetDefinitions.h"
+
 
 static void CreateImage(vtkSmartPointer<vtkImageData> image,
                         unsigned char *color1,
@@ -164,7 +166,7 @@ int main(int, char *[]) {
     // read the volume data set
     // ----------------------------------------------------------------
     vtkSmartPointer<vtkMetaImageReader> reader = vtkSmartPointer<vtkMetaImageReader>::New();
-    reader->SetFileName("../../../meteo_cab/Teddy_128_128_62.mhd");
+    reader->SetFileName(getDataPath("/Teddy_128_128_62.mhd").c_str());
     reader->Update();
 
 

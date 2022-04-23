@@ -7,45 +7,17 @@
 
 
 #include <string>
+#include <algorithm>
 
-using namespace std;
-enum DataSets {
-    CLOUD_ICE,
-    CLOUD_WATER,
-    PRESSURE,
-    RAIN_MIXTURE,
-    WIND_VERTICAL,
-    WIND_LONGITUDIAL,
-    WIND_LATERAL
-};
+#include <cstdlib>
 
-static string getDatasetPath(DataSets dataSets) {
-    string base = "../../../meteo_cab/data/";
-    switch (dataSets) {
-        case DataSets::CLOUD_ICE:
-            base += "cli";
-            break;
-        case DataSets::CLOUD_WATER:
-            base += "clw";
-            break;
-        case DataSets::PRESSURE:
-            base += "pres";
-            break;
-        case DataSets::RAIN_MIXTURE:
-            base += "qr";
-            break;
-        case DataSets::WIND_VERTICAL:
-            base += "ua";
-            break;
-        case DataSets::WIND_LATERAL:
-            base += "va";
-            break;
-        case DataSets::WIND_LONGITUDIAL:
-            base += "wa";
-            break;
-    }
-    base += "/";
-    return base;
+static std::string getDataPath(const std::string &localDataPath) {
+    auto basepath = std::string(__FILE__);
+    std::replace(basepath.begin(), basepath.end(), '\\', '/');
+    auto lastSlash = basepath.find_last_of('/');
+    basepath = basepath.substr(0, lastSlash);
+    auto fullpath = basepath + localDataPath;
+    return fullpath;
 }
 
 
