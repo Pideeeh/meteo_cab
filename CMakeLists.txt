@@ -15,3 +15,8 @@ vtk_module_autoinit(TARGETS ${PROJECT_NAME} MODULES ${VTK_LIBRARIES})
 add_executable(Terrain_Vis terrainVis.cpp)
 target_link_libraries(Terrain_Vis PRIVATE ${VTK_LIBRARIES})
 vtk_module_autoinit(TARGETS Terrain_Vis MODULES ${VTK_LIBRARIES})
+
+
+add_executable(Pressure_Iso pressure_iso.cpp)
+target_link_libraries(Pressure_Iso PRIVATE ${VTK_LIBRARIES})
+vtk_module_autoinit(TARGETS Pressure_Iso MODULES ${VTK_LIBRARIES})
