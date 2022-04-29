@@ -32,10 +32,10 @@ static void CreateImage(vtkSmartPointer<vtkImageData> image,
 
 
 // Callback for the slider interaction
-class vtkSliderCallback : public vtkCommand {
+class vtkContourSliderCallback : public vtkCommand {
 public:
-    static vtkSliderCallback *New() {
-        return new vtkSliderCallback;
+    static vtkContourSliderCallback *New() {
+        return new vtkContourSliderCallback;
     }
 
     virtual void Execute(vtkObject *caller, unsigned long, void *) {
@@ -45,7 +45,7 @@ public:
                                     static_cast<vtkSliderRepresentation *>(sliderWidget->GetRepresentation())->GetValue());
     }
 
-    vtkSliderCallback() : MarchingCubes(0) {}
+    vtkContourSliderCallback() : MarchingCubes(0) {}
 
     vtkSmartPointer<vtkMarchingCubes> MarchingCubes;
 };
@@ -218,7 +218,7 @@ int main(int, char *[]) {
     sliderWidget->SetAnimationModeToAnimate();
 
     // create the callback
-    vtkSmartPointer<vtkSliderCallback> callback = vtkSmartPointer<vtkSliderCallback>::New();
+    vtkSmartPointer<vtkContourSliderCallback> callback = vtkSmartPointer<vtkContourSliderCallback>::New();
     callback->MarchingCubes = marchingCubes;
     sliderWidget->AddObserver(vtkCommand::InteractionEvent, callback);
 
@@ -241,7 +241,7 @@ int main(int, char *[]) {
 
     // create transfer function
     vtkSmartPointer<vtkEasyTransfer> easyTransfer = vtkSmartPointer<vtkEasyTransfer>::New();
-    easyTransfer->SetColorUniform(1.0,1.0,1.0);        // set initial color map
+    easyTransfer->SetColorUniform(1.0, 1.0, 1.0);        // set initial color map
     easyTransfer->SetColorRange(0, 0.00507);    // set the value range that is mapped to color
     easyTransfer->SetOpacityRange(0, 0.00507);    // set the value range that is mapped to opacity
     easyTransfer->RefreshImage();

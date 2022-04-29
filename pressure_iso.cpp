@@ -18,37 +18,34 @@
 #include <vtkSliderRepresentation3D.h>
 #include <vtkSliderWidget.h>
 #include <vtkXMLImageDataWriter.h>
-#include <vtkMetaImageReader.h>
 #include <vtkXMLImageDataReader.h>
 #include "dataSetDefinitions.h"
 
 namespace {
-    void CreateData(vtkImageData* data);
+    void CreateData(vtkImageData *data);
 
-    class vtkSliderCallback : public vtkCommand
-    {
+    class vtkSliderCallback : public vtkCommand {
     public:
-        static vtkSliderCallback* New()
-        {
+        static vtkSliderCallback *New() {
             return new vtkSliderCallback;
         }
-        virtual void Execute(vtkObject* caller, unsigned long, void*)
-        {
-            vtkSliderWidget* sliderWidget = reinterpret_cast<vtkSliderWidget*>(caller);
+
+        virtual void Execute(vtkObject *caller, unsigned long, void *) {
+            vtkSliderWidget *sliderWidget = reinterpret_cast<vtkSliderWidget *>(caller);
             double value =
-                static_cast<vtkSliderRepresentation*>(sliderWidget->GetRepresentation())
-                ->GetValue();
+                    static_cast<vtkSliderRepresentation *>(sliderWidget->GetRepresentation())
+                            ->GetValue();
             this->ContourFilter->GenerateValues(1, value, value);
         }
-        vtkSliderCallback() : ContourFilter(NULL)
-        {
+
+        vtkSliderCallback() : ContourFilter(NULL) {
         }
-        vtkContourFilter* ContourFilter;
+
+        vtkContourFilter *ContourFilter;
     };
 } // namespace
 
-int main(int, char* [])
-{
+int main(int, char *[]) {
     vtkNew<vtkNamedColors> colors;
     //vtkNew<vtkImageData> data;
     //CreateData(data);
@@ -60,7 +57,7 @@ int main(int, char* [])
     // Create an isosurface
     vtkNew<vtkContourFilter> contourFilter;
     contourFilter->SetInputData(data);
-    contourFilter->GenerateValues(10, 75000,100000); // (numContours, rangeStart, rangeEnd)
+    contourFilter->GenerateValues(10, 75000, 100000); // (numContours, rangeStart, rangeEnd)
 
 // Map the contours to graphical primitives
     vtkNew<vtkPolyDataMapper> contourMapper;
@@ -93,7 +90,7 @@ int main(int, char* [])
 
     renderer->AddActor(contourActor);
     renderer->AddActor(outlineActor);
-    renderer->SetBackground(1,1,1);
+    renderer->SetBackground(1, 1, 1);
 
     vtkNew<vtkSliderRepresentation3D> sliderRep;
     sliderRep->SetMinimumValue(79000.0);
@@ -126,27 +123,26 @@ int main(int, char* [])
 
     return EXIT_SUCCESS;
 }
+
 namespace {
-    void CreateData(vtkImageData* data)
-    {
+    void CreateData(vtkImageData *data) {
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-        reader->SetFileName("C:/Users/annik/Documents/fs22/scientific visualization/vis22_prog/meteo_cab/data/pres_final.vti");
+        reader->SetFileName(
+                "C:/Users/annik/Documents/fs22/scientific visualization/vis22_prog/meteo_cab/data/pres_final.vti");
         reader->Update();
         vtkSmartPointer<vtkImageData> dat = reader->GetOutput();
-        int* dims = dat->GetDimensions();
+        int *dims = dat->GetDimensions();
         vtkSmartPointer<vtkPointData> pts = dat->GetPointData();
         vtkSmartPointer<vtkAbstractArray> arr = pts->GetAbstractArray("pres");
         vtkSmartPointer<vtkFloatArray> float_array = vtkFloatArray::SafeDownCast(arr);
         data->SetExtent(0, 255, 0, 255, 0, 0);
-        int* extent = data->GetExtent();
+        int *extent = data->GetExtent();
         data->AllocateScalars(VTK_DOUBLE, 1);
-        for (int y = extent[2]; y <= extent[3]; y++)
-        {
-            for (int x = extent[0]; x <= extent[1]; x++)
-            {
-                double* pixel = static_cast<double*>(data->GetScalarPointer(x, y, 0));
+        for (int y = extent[2]; y <= extent[3]; y++) {
+            for (int x = extent[0]; x <= extent[1]; x++) {
+                double *pixel = static_cast<double *>(data->GetScalarPointer(x, y, 0));
                 int idx = y * dims[0] + x;
-                auto v = static_cast<double*>(float_array->GetTuple(idx));
+                auto v = static_cast<double *>(float_array->GetTuple(idx));
                 pixel[0] = v[0];
             }
         }
