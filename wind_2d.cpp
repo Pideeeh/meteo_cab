@@ -12,16 +12,32 @@
 #include <vtkMaskPoints.h>
 #include <vtkXMLPolyDataReader.h>
 
+#include <vtkFloatArray.h>
+#include <vtkStreamTracer.h>
+#include <vtkPolyDataPointSampler.h> 
+#include <vtkEvenlySpacedStreamlines2D.h>
+#include <vtkPlaneSource.h>
+#include <vtkImageData.h>
+#include <vtkXMLImageDataReader.h>
+#include <vtkProperty.h>
+#include <vtkNamedColors.h>
+#include <vtkInteractorStyleTrackballCamera.h>
+#include <vtkButtonWidget.h>
+#include <vtkCommand.h>
+#include <vtkTexturedButtonRepresentation2D.h>
 
 int main(int, char* []) {
 
+    vtkNew<vtkNamedColors> colors;
+
     // ----------------------------------------------------------------
-    // read the field data from PolyData.
+    // read the field data from ImageData.
     // ----------------------------------------------------------------
-    vtkSmartPointer<vtkXMLPolyDataReader> reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-    reader->SetFileName("C:/Users/david/Desktop/SciVis/Clouds/2d_velocity/poly_data.vtp");
+
+    vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
+    reader->SetFileName("C:/Users/david/Desktop/SciVis/Clouds/2d_velocity/2d_velocity.vti");
     reader->Update();
-    vtkSmartPointer<vtkPolyData> v = reader->GetOutput();
+    vtkSmartPointer<vtkImageData> v = reader->GetOutput();
    
     // ----------------------------------------------------------------
     // Change spacing (Peter's code), it does not work with polydata
@@ -39,7 +55,6 @@ int main(int, char* []) {
     mask->SetInputData(v);
     mask->RandomModeOn();
     mask->SetRandomModeType(2);
-    //densityFilter->SetInputConnection(reader->GetOutputPort());
     mask->SetMaximumNumberOfPoints(1000);
     mask->SetOnRatio(50);
     mask->Update();
@@ -70,19 +85,69 @@ int main(int, char* []) {
     mapper->Update();
     auto vectors_actor = vtkSmartPointer<vtkActor>::New();
     vectors_actor->SetMapper(mapper);
+    vectors_actor->GetProperty()->SetColor(colors->GetColor3d("Blue").GetData());
+
+    
+    // ----------------------------------------------------------------
+    // Compute Seeds - uniformly distributed in the domain
+    // ----------------------------------------------------------------
+    v->GetPointData()->SetActiveScalars("2d_velocity");
+
+    double N = 15;
+    double bounds[6];
+    v->GetBounds(bounds);
+
+    double range[3];
+    for (int i = 0; i < 3; ++i) range[i] = bounds[2 * i + 1] - bounds[2 * i];
+
+    vtkNew<vtkPoints> array_seeds;
+    for (int y = 0; y <= N; y++) {
+        for (int x = 0; x <= N; x++) {
+            int idx = y * N + x;
+            array_seeds->InsertNextPoint(
+                bounds[0] + (x / N) * (range[0]),
+                bounds[2] + (y / N) * (range[1]),
+                0);
+        }
+    }
+
+    vtkSmartPointer<vtkPolyData> seeds = vtkSmartPointer<vtkPolyData>::New();
+    seeds->SetPoints(array_seeds);
+
+    // ----------------------------------------------------------------
+    // Setup streamlines and integrator
+    // ----------------------------------------------------------------
+    vtkSmartPointer<vtkStreamTracer> tracer = vtkSmartPointer<vtkStreamTracer>::New();
+    tracer->SetInputData(v);
+    tracer->SetSourceData(seeds);
+    tracer->SetMaximumPropagation(1);
+    tracer->SetIntegratorTypeToRungeKutta45();
+    tracer->SetInitialIntegrationStep(0.01);
+    tracer->SetIntegrationDirectionToBoth();
+    tracer->Update();
+
+    vtkNew<vtkPolyDataMapper> lines_mapper;
+    lines_mapper->SetInputConnection(tracer->GetOutputPort());
+    vtkNew<vtkActor> streamlines_actor;
+    streamlines_actor->SetMapper(lines_mapper);
+    streamlines_actor->VisibilityOn();
 
     // ----------------------------------------------------------------
     // Rendering
     // ----------------------------------------------------------------
     vtkNew<vtkRenderer> renderer;
-    renderer->SetBackground(255,255,255);
-    renderer->AddActor(vectors_actor);
+    renderer->SetBackground(colors->GetColor3d("White").GetData());
+    //renderer->AddActor(vectors_actor);
+    renderer->AddActor(streamlines_actor);
     vtkNew<vtkRenderWindow> renderWindow;
     renderWindow->AddRenderer(renderer);
     renderWindow->SetWindowName("Top view of Vector Field");
 
     vtkNew<vtkRenderWindowInteractor> renderWindowInteractor;
     renderWindowInteractor->SetRenderWindow(renderWindow);
+    vtkNew<vtkInteractorStyleTrackballCamera> trackball;
+    renderWindowInteractor->SetInteractorStyle(trackball);
+
     renderWindow->Render();
     renderWindowInteractor->Initialize();
 
