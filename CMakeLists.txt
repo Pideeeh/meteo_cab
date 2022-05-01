@@ -21,6 +21,10 @@ add_executable(Pressure_Iso pressure_iso.cpp)
 target_link_libraries(Pressure_Iso PRIVATE ${VTK_LIBRARIES})
 vtk_module_autoinit(TARGETS Pressure_Iso MODULES ${VTK_LIBRARIES})
 
+add_executable(Slicer_Pressure slicer_pressure.cpp)
+target_link_libraries(Slicer_Pressure PRIVATE ${VTK_LIBRARIES})
+vtk_module_autoinit(TARGETS Slicer_Pressure MODULES ${VTK_LIBRARIES})
+
 
 add_executable(Wind_2d wind_2d.cpp)
 target_link_libraries(Wind_2d PRIVATE ${VTK_LIBRARIES})
