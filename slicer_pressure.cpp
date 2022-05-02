@@ -178,10 +178,9 @@ int main(int, char *[]) {
     double origin[3];
     data->GetOrigin(origin);
 
-    int extent[3];
-    data->GetExtent(extent);
     reslicer->SetOutputOrigin(origin);
-    reslicer->SetOutputExtent(0, extent[0] - 1, 0, extent[1] - 1, 0, 0);
+    //Todo make this not dependent on a fixed size
+    reslicer->SetOutputExtent(0, 199, 0, 199, 0, 0);
     reslicer->SetInputData(data);
     reslicer->Update();
 
