@@ -26,6 +26,8 @@
 #include <vtkCommand.h>
 #include <vtkTexturedButtonRepresentation2D.h>
 
+#include "dataSetDefinitions.h"
+
 int main(int, char* []) {
 
     vtkNew<vtkNamedColors> colors;
@@ -35,7 +37,7 @@ int main(int, char* []) {
     // ----------------------------------------------------------------
 
     vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-    reader->SetFileName("C:/Users/david/Desktop/SciVis/Clouds/2d_velocity/2d_velocity.vti");
+    reader->SetFileName(getDataPath("/data/2d_velocity.vti").c_str());
     reader->Update();
     vtkSmartPointer<vtkImageData> v = reader->GetOutput();
    
