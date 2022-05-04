@@ -97,8 +97,8 @@ public:
             // ----------------------------------------------------------------
             // Create a lookup table to share between the mapper and the scalar bar
             // ----------------------------------------------------------------
-            double min = localmins[height];//initialization on values of our height data
-            double max = localmaxs[height];
+            float min = localmins[(height-19998)*100];//initialization on values of our height data
+            float max = localmaxs[(height - 19998) * 100];
             static const double numColors = 10;
             vtkSmartPointer<vtkLookupTable> lookupTable = vtkSmartPointer<vtkLookupTable>::New();
             lookupTable->SetScaleToLinear();
@@ -111,6 +111,7 @@ public:
                 lookupTable->SetTableValue(i, color[0], color[1], color[2]);
             }
             lookupTable->Build();
+            lookupTable->SetTableRange(min,max);
             // ----------------------------------------------------------------
             // Create a scalar bar actor for the colormap
             // ----------------------------------------------------------------
@@ -120,7 +121,6 @@ public:
             legend->SetVerticalTitleSeparation(6);
             legend->GetPositionCoordinate()->SetValue(0.88, 0.1);
             legend->SetWidth(0.1);
-            //legend->SetCustomLabels()
 
             renderer->AddActor2D(legend);
 
@@ -329,8 +329,6 @@ int main(int, char *[]) {
     style->legend = legend;
     style->localmins = localmins;
     style->localmaxs = localmaxs;
-
-
     style->SetCurrentRenderer(renderer);
 
     interactor->SetInteractorStyle(style);
