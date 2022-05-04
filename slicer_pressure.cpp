@@ -142,15 +142,25 @@ void CreateColorImage(vtkImageData *input, vtkImageData *image) {
     int dimy = image->GetDimensions()[1];
     int dimz = image->GetDimensions()[2];
 
-    for (unsigned int x = 0; x < dimx; x++) {
+    for (unsigned int z = 0; z < dimz; z++) {
+        float max = minVal;
+        float min = maxVal;
         for (unsigned int y = 0; y < dimy; y++) {
-            for (unsigned int z = 0; z < dimz; z++) {
+            for (unsigned int x = 0; x < dimx; x++) {
+                float* inputColor =
+                    static_cast<float*>(input->GetScalarPointer(x, y, z));
+                max = std::max(max, inputColor[0]);
+                min = std::min(min, inputColor[0]);
+            }
+        }
+        for (unsigned int y = 0; y < dimy; y++) {
+            for (unsigned int x = 0; x < dimx; x++) {
                 float *inputColor =
                         static_cast<float *>(input->GetScalarPointer(x, y, z));
                 unsigned char *pixel =
                         static_cast<unsigned char *>(image->GetScalarPointer(x, y, z));
 
-                double t = ((inputColor[0] - minVal) / maxVal);
+                double t = ((inputColor[0] - min) / (max-min));
                 double color[3];
                 ctf->GetColor(t, color);
                 for (auto j = 0; j < 3; ++j) {
