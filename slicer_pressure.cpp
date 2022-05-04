@@ -21,6 +21,9 @@
 #include <vtkImageSliceMapper.h>
 #include <vtkImageResliceMapper.h>
 #include "dataSetDefinitions.h"
+#include <vtkScalarBarActor.h>
+#include <vtkLookupTable.h>
+
 
 // Define interaction style
 class KeyPressInteractorStyle : public vtkInteractorStyleTrackballCamera {
@@ -77,17 +80,61 @@ public:
             origin[2] = height;
             slicer->SetOutputOrigin(origin);
             slicer->Update();
+
+            vtkNew<vtkNamedColors> colors;
+            vtkNew<vtkColorTransferFunction> ctf;
+            ctf->SetScaleToLinear();
+            ctf->AddRGBPoint(0.0, colors->GetColor3d("MidnightBlue").GetRed(),
+                colors->GetColor3d("MidnightBlue").GetGreen(),
+                colors->GetColor3d("MidnightBlue").GetBlue());
+            ctf->AddRGBPoint(0.5, colors->GetColor3d("Gainsboro").GetRed(),
+                colors->GetColor3d("Gainsboro").GetGreen(),
+                colors->GetColor3d("Gainsboro").GetBlue());
+            ctf->AddRGBPoint(1.0, colors->GetColor3d("DarkOrange").GetRed(),
+                colors->GetColor3d("DarkOrange").GetGreen(),
+                colors->GetColor3d("DarkOrange").GetBlue());
+
+            // ----------------------------------------------------------------
+            // Create a lookup table to share between the mapper and the scalar bar
+            // ----------------------------------------------------------------
+            double min = localmins[height];//initialization on values of our height data
+            double max = localmaxs[height];
+            static const double numColors = 10;
+            vtkSmartPointer<vtkLookupTable> lookupTable = vtkSmartPointer<vtkLookupTable>::New();
+            lookupTable->SetScaleToLinear();
+            lookupTable->SetNumberOfTableValues(numColors);
+            double r, g, b;
+            for (int i = 0; i < numColors; i++) {
+                double val = ((double)i / numColors);
+                double color[3];
+                ctf->GetColor(val, color);
+                lookupTable->SetTableValue(i, color[0], color[1], color[2]);
+            }
+            lookupTable->Build();
+            // ----------------------------------------------------------------
+            // Create a scalar bar actor for the colormap
+            // ----------------------------------------------------------------
+            legend->SetLookupTable(lookupTable);
+            legend->SetNumberOfLabels(3);
+            legend->SetTitle("pressure");
+            legend->SetVerticalTitleSeparation(6);
+            legend->GetPositionCoordinate()->SetValue(0.88, 0.1);
+            legend->SetWidth(0.1);
+            //legend->SetCustomLabels()
+
+            renderer->AddActor2D(legend);
+
             contourFilter->DebugOn();
             contourFilter->GenerateValues(10, value_lower, value_upper);
             contourFilter->Update();
             contourMapper->Update();
             sliceActor->Update();
 
-
             double *pos = contourActor->GetPosition();
             contourActor->SetPosition(pos);
 
             renderWindow->Render();
+
         }
 
 
@@ -107,11 +154,15 @@ public:
     vtkSmartPointer<vtkActor> contourActor;
     vtkSmartPointer<vtkImageActor> sliceActor;
     vtkSmartPointer<vtkImageResliceMapper> sliceMapper;
+    vtkSmartPointer<vtkScalarBarActor> legend;
+    vtkSmartPointer<vtkRenderer> renderer;
     vtkSmartPointer<vtkRenderWindow> renderWindow;
+    std::vector<float> localmins;
+    std::vector<float> localmaxs;
 };
 
 
-void CreateColorImage(vtkImageData *input, vtkImageData *image) {
+void CreateColorImage(vtkImageData *input, std::vector<float> &localmins, std::vector<float>& localmaxs, vtkImageData *image) {
     image->SetDimensions(input->GetDimensions());
     image->SetSpacing(input->GetSpacing());
     image->SetOrigin(input->GetOrigin());
@@ -140,7 +191,13 @@ void CreateColorImage(vtkImageData *input, vtkImageData *image) {
 
     int dimx = image->GetDimensions()[0];
     int dimy = image->GetDimensions()[1];
-    int dimz = image->GetDimensions()[2];
+    const int dimz = image->GetDimensions()[2];
+
+    float mindiff = maxVal;
+    float thres = 10000;
+    localmins.resize(dimz);
+    localmaxs.resize(dimz);
+
 
     for (unsigned int z = 0; z < dimz; z++) {
         float max = minVal;
@@ -151,8 +208,12 @@ void CreateColorImage(vtkImageData *input, vtkImageData *image) {
                     static_cast<float*>(input->GetScalarPointer(x, y, z));
                 max = std::max(max, inputColor[0]);
                 min = std::min(min, inputColor[0]);
+                mindiff = std::min(max - min, mindiff);
             }
         }
+        localmins[z] = min;
+        localmaxs[z] = max;
+
         for (unsigned int y = 0; y < dimy; y++) {
             for (unsigned int x = 0; x < dimx; x++) {
                 float *inputColor =
@@ -160,7 +221,7 @@ void CreateColorImage(vtkImageData *input, vtkImageData *image) {
                 unsigned char *pixel =
                         static_cast<unsigned char *>(image->GetScalarPointer(x, y, z));
 
-                double t = ((inputColor[0] - min) / (max-min));
+                double t = ((inputColor[0] - min) / std::max((max-min),thres));
                 double color[3];
                 ctf->GetColor(t, color);
                 for (auto j = 0; j < 3; ++j) {
@@ -181,8 +242,11 @@ int main(int, char *[]) {
     vtkSmartPointer<vtkImageData> data = reader->GetOutput();
     data->GetPointData()->SetActiveScalars("pres");
 
+    std::vector<float> localmins;
+    std::vector<float> localmaxs;
+
     vtkNew<vtkImageData> data_col;
-    CreateColorImage(data, data_col);
+    CreateColorImage(data, localmins, localmaxs, data_col);
 
     vtkNew<vtkImageReslice> reslicer;
     double origin[3];
@@ -230,8 +294,12 @@ int main(int, char *[]) {
     outlineMapper->SetInputConnection(outlineFilter->GetOutputPort());
     vtkNew<vtkActor> outlineActor;
     outlineActor->SetMapper(outlineMapper);
-    outlineActor->GetProperty()->SetColor(colors->GetColor3d("Gray").GetData());
+    outlineActor->GetProperty()->SetColor(colors->GetColor3d("Grey").GetData());
     outlineActor->GetProperty()->SetLineWidth(3);
+
+
+    vtkSmartPointer<vtkScalarBarActor> legend = vtkSmartPointer<vtkScalarBarActor>::New();
+
 
     // Visualize
     vtkNew<vtkRenderer> renderer;
@@ -257,6 +325,11 @@ int main(int, char *[]) {
     style->sliceMapper = sliceMapper;
     style->height = 19998;
     style->renderWindow = renderWindow;
+    style->renderer = renderer;
+    style->legend = legend;
+    style->localmins = localmins;
+    style->localmaxs = localmaxs;
+
 
     style->SetCurrentRenderer(renderer);
 
