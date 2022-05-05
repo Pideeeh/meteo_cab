@@ -26,10 +26,13 @@ cloudyness.mhd -> Sum of CLI and CLW properties. Rendered through raycasting.
 File can be replaced any time with a higher resolution sampling.
 Load Cloudyness.pvsm -> Set Resample dimensions -> Export -> enjoy
 
-## Pressure Isolines: file pressure_iso.cpp
+## Pressure Slices: file slice_pressure.cpp
 (Frawa and Annika)
-Code displays a few isolines and has slider that can interactively display specific isolines. Data is weirdly rescaled rn but we have to ask the Prof. about it before we can do any better.
+
+Code displays a few isolines, arrow up and down chooses different slice and left and right different isolines values. Pressing "h" switches between horizontal and vertical slices. Horizontal coloring is done locally to see more change and has adaptive legend. Vertical coloring on the other hand is done globally because it is not very informative anyways (and thus also has no isolines, but if you'd like we could change that)
+
 Needed files: ```./data/pressure_slice.vti```
+
 
 
 ## Iterate through Slices of ImageData:
