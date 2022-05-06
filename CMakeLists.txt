@@ -29,3 +29,8 @@ vtk_module_autoinit(TARGETS Slicer_Pressure MODULES ${VTK_LIBRARIES})
 add_executable(Wind_2d wind_2d.cpp)
 target_link_libraries(Wind_2d PRIVATE ${VTK_LIBRARIES})
 vtk_module_autoinit(TARGETS Wind_2d MODULES ${VTK_LIBRARIES})
+
+
+add_executable(App MeteoAppLauncher.cpp)
+target_link_libraries(App PRIVATE ${VTK_LIBRARIES})
+vtk_module_autoinit(TARGETS App MODULES ${VTK_LIBRARIES})
