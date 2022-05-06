@@ -24,6 +24,8 @@
 #include <vtkScalarBarActor.h>
 #include <vtkLookupTable.h>
 
+bool horizontal = true;
+double globalmin, globalmax;
 
 // Define interaction style
 class KeyPressInteractorStyle : public vtkInteractorStyleTrackballCamera {
@@ -41,20 +43,28 @@ public:
         // Get the keypress
         vtkRenderWindowInteractor *rwi = this->Interactor;
         std::string key = rwi->GetKeySym();
-
         double dataSpacing = data->GetSpacing()[2];
         double origin[3];
         slicer->GetOutputOrigin(origin);
         bool pressed = false;
         // Handle an arrow key
         if (key == "Up") {
-            height += dataSpacing;
-
+            if (horizontal) {
+                height += dataSpacing;
+            }
+            else {
+                vertical_height += 20*dataSpacing;
+            }
             pressed = true;
         }
 
         if (key == "Down") {
-            height -= dataSpacing;
+            if (horizontal) {
+                height -= dataSpacing;
+            }
+            else {
+                vertical_height -= 20*dataSpacing;
+            }
             pressed = true;
         }
         if (key == "Right") {
@@ -62,8 +72,17 @@ public:
             value_upper += 100;
             pressed = true;
         }
-
-        // Handle a "normal" key
+        if (key == "h") {
+            horizontal = !horizontal;
+            if (horizontal) {
+                cout << "horizontal slice" << endl;
+                sliceMapper->SetInputData(data);
+            }
+            else {
+                cout << "vertical slice" << endl;
+                sliceMapper->SetInputData(data_global);
+            }
+        }
         if (key == "Left") {
             value_lower -= 100;
             value_upper -= 100;
@@ -72,8 +91,14 @@ public:
 
         if (pressed) {
             vtkNew<vtkPlane> plane;
-            plane->SetOrigin(5, 49, height);
-            plane->SetNormal(0, 0, 1);
+            plane->SetOrigin(5, vertical_height, height);
+            if (horizontal) {
+                plane->SetNormal(0, 0, 1);
+            }
+            else {
+                plane->SetNormal(0,1,0);
+            }
+            
 
             sliceMapper->SetSlicePlane(plane);
 
@@ -99,7 +124,7 @@ public:
             // ----------------------------------------------------------------
             float min = localmins[(height-19998)*100];//initialization on values of our height data
             float max = localmaxs[(height - 19998) * 100];
-            static const double numColors = 10;
+            static const double numColors = 50;
             vtkSmartPointer<vtkLookupTable> lookupTable = vtkSmartPointer<vtkLookupTable>::New();
             lookupTable->SetScaleToLinear();
             lookupTable->SetNumberOfTableValues(numColors);
@@ -111,7 +136,12 @@ public:
                 lookupTable->SetTableValue(i, color[0], color[1], color[2]);
             }
             lookupTable->Build();
-            lookupTable->SetTableRange(min,max);
+            if (horizontal) {
+                lookupTable->SetTableRange(min, max);
+            }
+            else {
+                lookupTable->SetTableRange(globalmin, globalmax);
+            }
             // ----------------------------------------------------------------
             // Create a scalar bar actor for the colormap
             // ----------------------------------------------------------------
@@ -125,13 +155,19 @@ public:
             renderer->AddActor2D(legend);
 
             contourFilter->DebugOn();
-            contourFilter->GenerateValues(10, value_lower, value_upper);
+            if (horizontal) {
+                contourFilter->GenerateValues(10, min, max);
+            }
+            else {
+                contourFilter->GenerateValues(0, value_lower, value_upper);
+            }
             contourFilter->Update();
             contourMapper->Update();
             sliceActor->Update();
 
             double *pos = contourActor->GetPosition();
             contourActor->SetPosition(pos);
+            //cout << contourActor->GetProperty()->GetColor()[0] << contourActor->GetProperty()->GetColor()[1] << contourActor->GetProperty()->GetColor()[1] << endl;
 
             renderWindow->Render();
 
@@ -146,9 +182,10 @@ public:
     double value_lower = 75000.0;
     double value_upper = 100000.0;
     double height = 0.0;
+    double vertical_height = 0.0;
 
     vtkSmartPointer<vtkImageReslice> slicer;
-    vtkSmartPointer<vtkImageData> data;
+    vtkSmartPointer<vtkImageData> data, data_global;
     vtkSmartPointer<vtkContourFilter> contourFilter;
     vtkSmartPointer<vtkPolyDataMapper> contourMapper;
     vtkSmartPointer<vtkActor> contourActor;
@@ -194,7 +231,7 @@ void CreateColorImage(vtkImageData *input, std::vector<float> &localmins, std::v
     const int dimz = image->GetDimensions()[2];
 
     float mindiff = maxVal;
-    float thres = 10000;
+    float thres = 1;
     localmins.resize(dimz);
     localmaxs.resize(dimz);
 
@@ -232,6 +269,58 @@ void CreateColorImage(vtkImageData *input, std::vector<float> &localmins, std::v
     }
 }
 
+void CreateGlobalColorImage(vtkImageData* input, vtkImageData* image) {
+    image->SetDimensions(input->GetDimensions());
+    image->SetSpacing(input->GetSpacing());
+    image->SetOrigin(input->GetOrigin());
+
+    vtkNew<vtkNamedColors> colors;
+    vtkNew<vtkColorTransferFunction> ctf;
+    ctf->SetScaleToLinear();
+    ctf->AddRGBPoint(0.0, colors->GetColor3d("MidnightBlue").GetRed(),
+        colors->GetColor3d("MidnightBlue").GetGreen(),
+        colors->GetColor3d("MidnightBlue").GetBlue());
+    ctf->AddRGBPoint(0.5, colors->GetColor3d("Gainsboro").GetRed(),
+        colors->GetColor3d("Gainsboro").GetGreen(),
+        colors->GetColor3d("Gainsboro").GetBlue());
+    ctf->AddRGBPoint(1.0, colors->GetColor3d("DarkOrange").GetRed(),
+        colors->GetColor3d("DarkOrange").GetGreen(),
+        colors->GetColor3d("DarkOrange").GetBlue());
+
+    double range[2];
+    input->GetScalarRange(range);
+
+    double maxVal = range[1];
+    double minVal = range[0];
+    globalmin = minVal;
+    globalmax = maxVal;
+
+    image->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
+
+
+    int dimx = image->GetDimensions()[0];
+    int dimy = image->GetDimensions()[1];
+    const int dimz = image->GetDimensions()[2];
+
+    for (unsigned int z = 0; z < dimz; z++) {
+        for (unsigned int y = 0; y < dimy; y++) {
+            for (unsigned int x = 0; x < dimx; x++) {
+                float* inputColor =
+                    static_cast<float*>(input->GetScalarPointer(x, y, z));
+                unsigned char* pixel =
+                    static_cast<unsigned char*>(image->GetScalarPointer(x, y, z));
+
+                double t = ((inputColor[0] - minVal) / (maxVal - minVal));
+                double color[3];
+                ctf->GetColor(t, color);
+                for (auto j = 0; j < 3; ++j) {
+                    pixel[j] = (unsigned char)(color[j] * 255);
+                }
+            }
+        }
+    }
+}
+
 
 int main(int, char *[]) {
     vtkNew<vtkNamedColors> colors;
@@ -245,8 +334,9 @@ int main(int, char *[]) {
     std::vector<float> localmins;
     std::vector<float> localmaxs;
 
-    vtkNew<vtkImageData> data_col;
+    vtkNew<vtkImageData> data_col,data_col_global;
     CreateColorImage(data, localmins, localmaxs, data_col);
+    CreateGlobalColorImage(data, data_col_global);
 
     vtkNew<vtkImageReslice> reslicer;
     double origin[3];
@@ -260,7 +350,7 @@ int main(int, char *[]) {
 
 
     vtkNew<vtkPlane> plane;
-    plane->SetOrigin(5, 49, 19998);
+    plane->SetOrigin(origin);
     plane->SetNormal(0, 0, 1);
 
     vtkNew<vtkImageResliceMapper> sliceMapper;
@@ -279,12 +369,14 @@ int main(int, char *[]) {
 // Map the contours to graphical primitives
     vtkNew<vtkPolyDataMapper> contourMapper;
     contourMapper->SetInputConnection(contourFilter->GetOutputPort());
-
+    contourMapper->ScalarVisibilityOn();
+    contourMapper->SetScalarRange(100, 1000);
 
     // Create an actor for the contours
     vtkNew<vtkActor> contourActor;
     contourActor->SetMapper(contourMapper);
-    contourActor->GetProperty()->SetLineWidth(0.5);
+    contourActor->GetProperty()->SetLineWidth(1);
+    contourActor->GetProperty()->SetColor(colors->GetColor3d("Grey").GetData());
 
     // Create the outline
     vtkNew<vtkOutlineFilter> outlineFilter;
@@ -317,13 +409,15 @@ int main(int, char *[]) {
 
     vtkNew<KeyPressInteractorStyle> style;
     style->data = data_col;
+    style->data_global = data_col_global;
     style->slicer = reslicer;
     style->contourFilter = contourFilter;
     style->contourMapper = contourMapper;
     style->contourActor = contourActor;
     style->sliceActor = sliceActor;
     style->sliceMapper = sliceMapper;
-    style->height = 19998;
+    style->height = 19998.5;
+    style->vertical_height = 48;
     style->renderWindow = renderWindow;
     style->renderer = renderer;
     style->legend = legend;
