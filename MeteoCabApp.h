@@ -28,13 +28,16 @@
 #include "vtkOBJReader.h"
 #include "vtkPlaneWidget.h"
 #include "vtkFloatArray.h"
+#include "vtkMetaImageReader.h"
+#include "vtkVolumeProperty.h"
+#include "vtkEasyTransfer.hpp"
+#include "vtkOpenGLGPUVolumeRayCastMapper.h"
 
 #include "utils.h"
 #include "dataSetDefinitions.h"
 #include "PlaneWidgetInteraction.h"
 
 using namespace std;
-
 
 
 class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
@@ -80,7 +83,16 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkRenderWindow> renderWindow;
     vtkSmartPointer<vtkRenderWindowInteractor> interactor;
 
-/*
+    /*
+     * Cloud variables
+     * */
+    bool cloudVisible = false;
+    vtkSmartPointer<vtkImageData> cloudData;
+    vtkSmartPointer<vtkVolume> cloudActor;
+    vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> cloudRaycastMapper;
+    vtkSmartPointer<vtkEasyTransfer> cloudTransferFunction;
+    vtkSmartPointer<vtkRenderer> cloudTransferRenderer;
+    /*
  * UI Variables
  * */
     vtkSmartPointer<vtkPlaneWidget> planeWidget;
@@ -271,10 +283,44 @@ public:
         planeWidget->On();
     }
 
+    void InitializeClouds() {
+
+        vtkNew<vtkMetaImageReader> reader;
+        reader->SetFileName(getDataPath("/data/cloudyness.mhd").c_str());
+        reader->Update();
+        cloudData = reader->GetOutput();
+
+        cloudRaycastMapper = vtkNew<vtkOpenGLGPUVolumeRayCastMapper>();
+        cloudRaycastMapper->SetInputData(cloudData);
+
+        // create transfer function
+        cloudTransferFunction = vtkNew<vtkEasyTransfer>();
+        cloudTransferFunction->SetColorUniform(1.0, 1.0, 1.0);        // set initial color map
+        cloudTransferFunction->SetColorRange(0, 0.00507);    // set the value range that is mapped to color
+        cloudTransferFunction->SetCloudOpacityRange(0, 0.00507, 3, 1000,
+                                                    0.9);    // set the value range that is mapped to opacity
+        cloudTransferFunction->RefreshImage();
+
+        // assign transfer function to volume properties
+        vtkSmartPointer<vtkVolumeProperty> volumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
+        volumeProperty->SetColor(cloudTransferFunction->GetColorTransferFunction());
+        volumeProperty->SetScalarOpacity(cloudTransferFunction->GetOpacityTransferFunction());
+
+        // create volume actor and assign mapper and properties
+        cloudActor = vtkNew<vtkVolume>();
+        cloudActor->SetMapper(cloudRaycastMapper);
+        cloudActor->SetProperty(volumeProperty);
+
+        // get renderer for the transfer function editor or a white background
+        cloudTransferRenderer = cloudTransferFunction->GetRenderer();
+        cloudTransferRenderer->SetViewport(0.66666, 0, 1, 1);
+
+    }
+
     void Launch() {
         InitializePressureSlicer();
         //InitializeHeightmap();
-
+        InitializeClouds();
         StartVisualization();
     }
 
@@ -364,7 +410,18 @@ public:
         heightmapVisible = !heightmapVisible;
         heightmapActor->SetVisibility(heightmapVisible);
         heightmapLegend->SetVisibility(heightmapVisible);
+    }
 
+    void ToggleCloudRendering() {
+        cloudVisible = !cloudVisible;
+
+        if (cloudVisible) {
+            renderer->AddActor(cloudActor);
+            //renderWindow->AddRenderer(cloudTransferRenderer);
+        } else {
+            renderer->RemoveActor(cloudActor);
+            //renderWindow->RemoveRenderer(cloudTransferRenderer);
+        }
     }
 
     void HandlePressureInputs(const string &key) {
@@ -411,7 +468,9 @@ public:
         if (key == "2") {
             ToggleHeightmap();
         }
-
+        if (key == "3") {
+            ToggleCloudRendering();
+        }
         if (pressureVisible) {
             HandlePressureInputs(key);
         }
