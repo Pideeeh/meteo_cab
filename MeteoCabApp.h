@@ -273,7 +273,7 @@ public:
 
     void Launch() {
         InitializePressureSlicer();
-        InitializeHeightmap();
+        //InitializeHeightmap();
 
         StartVisualization();
     }
