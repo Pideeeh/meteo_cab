@@ -16,13 +16,9 @@ void log(const vtkSmartPointer<vtkObject> &obj){
     obj->PrintSelf(cout,vtkIndent(1));
 }
 
-void
-GetSlicewiseColorField(vtkImageData *input, std::vector<float> &localmins, std::vector<float> &localmaxs,
-                 vtkImageData *image) {
-    image->SetDimensions(input->GetDimensions());
-    image->SetSpacing(input->GetSpacing());
-    image->SetOrigin(input->GetOrigin());
 
+
+vtkSmartPointer<vtkColorTransferFunction> blueToOrangeTransferFunction(){
     vtkNew<vtkNamedColors> colors;
     vtkNew<vtkColorTransferFunction> ctf;
     ctf->SetScaleToLinear();
@@ -35,6 +31,19 @@ GetSlicewiseColorField(vtkImageData *input, std::vector<float> &localmins, std::
     ctf->AddRGBPoint(1.0, colors->GetColor3d("DarkOrange").GetRed(),
                      colors->GetColor3d("DarkOrange").GetGreen(),
                      colors->GetColor3d("DarkOrange").GetBlue());
+    return ctf;
+}
+
+
+
+void
+GetSlicewiseColorField(vtkImageData *input, std::vector<float> &localmins, std::vector<float> &localmaxs,
+                 vtkImageData *image) {
+    image->SetDimensions(input->GetDimensions());
+    image->SetSpacing(input->GetSpacing());
+    image->SetOrigin(input->GetOrigin());
+
+    auto ctf = blueToOrangeTransferFunction();
 
     double range[2];
     input->GetScalarRange(range);
@@ -87,7 +96,6 @@ GetSlicewiseColorField(vtkImageData *input, std::vector<float> &localmins, std::
         }
     }
 }
-
 
 void getColorCorrespondingTovalue(double val, double &r, double &g, double &b, double max, double min) {
     double range = max - min;

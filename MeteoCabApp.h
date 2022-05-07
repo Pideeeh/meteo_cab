@@ -26,12 +26,16 @@
 #include "vtkOutlineFilter.h"
 #include "vtkProperty.h"
 #include "vtkOBJReader.h"
+#include "vtkPlaneWidget.h"
 #include "vtkFloatArray.h"
 
 #include "utils.h"
 #include "dataSetDefinitions.h"
+#include "PlaneWidgetInteraction.h"
 
 using namespace std;
+
+
 
 class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
     static MeteoCabApp *New() {
@@ -43,7 +47,6 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
 
 /*
  * Pressure Variables
- *
  * */
     bool pressureVisible = true;
     vtkSmartPointer<vtkImageData> pressureData;
@@ -58,6 +61,7 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkScalarBarActor> pressureLegend;
 
     vtkSmartPointer<vtkImageReslice> pressureReslicer;
+    vtkSmartPointer<PlaneWidgetInteraction> planeWidgetInteraction;
 
     std::vector<float> pressure_slice_minima;
     std::vector<float> pressure_slice_maxima;
@@ -76,6 +80,10 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkRenderWindow> renderWindow;
     vtkSmartPointer<vtkRenderWindowInteractor> interactor;
 
+/*
+ * UI Variables
+ * */
+    vtkSmartPointer<vtkPlaneWidget> planeWidget;
 public:
     void StartVisualization() {
         renderer = vtkNew<vtkRenderer>();
@@ -85,6 +93,8 @@ public:
 
         interactor = vtkNew<vtkRenderWindowInteractor>();
         interactor->SetRenderWindow(renderWindow);
+
+        InitializePlaneWidget();
 
         renderer->AddActor(contourActor);
         renderer->AddActor(outlineActor);
@@ -233,11 +243,113 @@ public:
         heightmapActor->GetProperty()->SetEdgeVisibility(false);
     }
 
+    void InitializePlaneWidget() {
+        planeWidget = vtkNew<vtkPlaneWidget>();
+        planeWidget->SetInteractor(interactor);
+        planeWidget->SetRepresentationToOutline();
+
+        planeWidgetInteraction = vtkNew<PlaneWidgetInteraction>();
+        planeWidgetInteraction->dataSpace = pressureData;
+        planeWidgetInteraction->app = this;
+        planeWidget->AddObserver(vtkCommand::InteractionEvent, planeWidgetInteraction);
+        planeWidget->AddObserver(vtkCommand::EndInteractionEvent, planeWidgetInteraction);
+
+        double center[3];
+        pressureData->GetCenter(center);
+        double origin[3];
+        pressureData->GetOrigin(origin);
+        center[2] = origin[2];
+        double bounds[6];
+        pressureData->GetBounds(bounds);
+        planeWidget->SetCenter(center);
+        planeWidget->SetOrigin(bounds[0], bounds[2], bounds[4]);
+        planeWidget->SetPoint1(bounds[0], bounds[3], bounds[4]);
+        planeWidget->SetPoint2(bounds[1], bounds[2], bounds[4]);
+
+
+        //planeWidget->PlaceWidget(bounds);
+        planeWidget->On();
+    }
+
     void Launch() {
         InitializePressureSlicer();
-        //InitializeHeightmap();
+        InitializeHeightmap();
 
         StartVisualization();
+    }
+
+    void UpdatePressureSlicer() {
+
+        int dimensions[3];
+        pressureData->GetDimensions(dimensions);
+
+        double dataOrigin[3];
+        pressureData->GetOrigin(dataOrigin);
+
+        double dataSpacing = pressureData->GetSpacing()[2];
+        double origin[3];
+        pressureReslicer->GetOutputOrigin(origin);
+
+        vtkNew<vtkPlane> plane;
+        planeWidget->GetPlane(plane);
+
+        double planeOrigin[3];
+        plane->GetOrigin(planeOrigin);
+
+        double sliceHeight = planeOrigin[2];
+        double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
+
+        pressureSliceMapper->SetSlicePlane(plane);
+
+        origin[2] = sliceHeight;
+        pressureReslicer->SetOutputOrigin(origin);
+        pressureReslicer->Update();
+
+        vtkSmartPointer<vtkColorTransferFunction> ctf = blueToOrangeTransferFunction();
+
+        // ----------------------------------------------------------------
+        // Create a lookup table to share between the mapper and the scalar bar
+        // ----------------------------------------------------------------
+        float min = pressure_slice_minima[current_slice];
+        float max = pressure_slice_maxima[current_slice];
+        static const double numColors = 10;
+        vtkSmartPointer<vtkLookupTable> lookupTable = vtkNew<vtkLookupTable>();
+        lookupTable->SetScaleToLinear();
+        lookupTable->SetNumberOfTableValues(numColors);
+        for (int i = 0; i < numColors; i++) {
+            double val = ((double) i / numColors);
+            double color[3];
+            ctf->GetColor(val, color);
+            lookupTable->SetTableValue(i, color[0], color[1], color[2]);
+        }
+        lookupTable->Build();
+        lookupTable->SetTableRange(min, max);
+        // ----------------------------------------------------------------
+        // Create a scalar bar actor for the colormap
+        // ----------------------------------------------------------------
+        pressureLegend->SetLookupTable(lookupTable);
+        pressureLegend->SetNumberOfLabels(3);
+        pressureLegend->SetTitle("pressure");
+        pressureLegend->SetVerticalTitleSeparation(6);
+        pressureLegend->GetPositionCoordinate()->SetValue(0.88, 0.1);
+        pressureLegend->SetWidth(0.1);
+
+        renderer->AddActor2D(pressureLegend);
+
+        pressureContourFilter->GenerateValues(10, pressure_value_lower, pressure_value_upper);
+        pressureContourFilter->Update();
+        pressureContourMapper->Update();
+        pressureSliceActor->Update();
+
+        double *pos = contourActor->GetPosition();
+        contourActor->SetPosition(pos);
+
+    }
+
+    void PlaneWidgetUpdated() {
+        UpdatePressureSlicer();
+
+        renderWindow->Render();
     }
 
 
@@ -256,33 +368,8 @@ public:
     }
 
     void HandlePressureInputs(const string &key) {
-
-        int dimensions[3];
-        pressureData->GetDimensions(dimensions);
-
-        double dataOrigin[3];
-        pressureData->GetOrigin(dataOrigin);
-
-        double dataSpacing = pressureData->GetSpacing()[2];
-        double origin[3];
-        pressureReslicer->GetOutputOrigin(origin);
-        bool pressed = false;
         // Handle an arrow key
-        if (key == "Up") {
-            current_slice++;
-            if (current_slice >= dimensions[2]) {
-                current_slice = dimensions[2] - 1;
-            }
-            pressed = true;
-        }
-
-        if (key == "Down") {
-            current_slice--;
-            if (current_slice < 0) {
-                current_slice = 0;
-            }
-            pressed = true;
-        }
+        bool pressed = false;
         if (key == "Right") {
             pressure_value_lower += 100;
             pressure_value_upper += 100;
@@ -297,67 +384,16 @@ public:
         }
 
         if (pressed) {
-            double sliceHeight = dataOrigin[2] + current_slice * dataSpacing;
-
-            vtkNew<vtkPlane> plane;
-            plane->SetOrigin(5, 49, sliceHeight);
-            plane->SetNormal(0, 0, 1);
-
-            pressureSliceMapper->SetSlicePlane(plane);
-
-            origin[2] = sliceHeight;
-            pressureReslicer->SetOutputOrigin(origin);
-            pressureReslicer->Update();
-
-            vtkNew<vtkColorTransferFunction> ctf;
-            ctf->SetScaleToLinear();
-            ctf->AddRGBPoint(0.0, colors->GetColor3d("MidnightBlue").GetRed(),
-                             colors->GetColor3d("MidnightBlue").GetGreen(),
-                             colors->GetColor3d("MidnightBlue").GetBlue());
-            ctf->AddRGBPoint(0.5, colors->GetColor3d("Gainsboro").GetRed(),
-                             colors->GetColor3d("Gainsboro").GetGreen(),
-                             colors->GetColor3d("Gainsboro").GetBlue());
-            ctf->AddRGBPoint(1.0, colors->GetColor3d("DarkOrange").GetRed(),
-                             colors->GetColor3d("DarkOrange").GetGreen(),
-                             colors->GetColor3d("DarkOrange").GetBlue());
-
-            // ----------------------------------------------------------------
-            // Create a lookup table to share between the mapper and the scalar bar
-            // ----------------------------------------------------------------
-            float min = pressure_slice_minima[current_slice];
-            float max = pressure_slice_maxima[current_slice];
-            static const double numColors = 10;
-            vtkSmartPointer<vtkLookupTable> lookupTable = vtkNew<vtkLookupTable>();
-            lookupTable->SetScaleToLinear();
-            lookupTable->SetNumberOfTableValues(numColors);
-            for (int i = 0; i < numColors; i++) {
-                double val = ((double) i / numColors);
-                double color[3];
-                ctf->GetColor(val, color);
-                lookupTable->SetTableValue(i, color[0], color[1], color[2]);
-            }
-            lookupTable->Build();
-            lookupTable->SetTableRange(min, max);
-            // ----------------------------------------------------------------
-            // Create a scalar bar actor for the colormap
-            // ----------------------------------------------------------------
-            pressureLegend->SetLookupTable(lookupTable);
-            pressureLegend->SetNumberOfLabels(3);
-            pressureLegend->SetTitle("pressure");
-            pressureLegend->SetVerticalTitleSeparation(6);
-            pressureLegend->GetPositionCoordinate()->SetValue(0.88, 0.1);
-            pressureLegend->SetWidth(0.1);
-
-            renderer->AddActor2D(pressureLegend);
-
-            pressureContourFilter->GenerateValues(10, pressure_value_lower, pressure_value_upper);
-            pressureContourFilter->Update();
-            pressureContourMapper->Update();
-            pressureSliceActor->Update();
-
-            double *pos = contourActor->GetPosition();
-            contourActor->SetPosition(pos);
+            UpdatePressureSlicer();
         }
+    }
+
+    void OnLeftButtonUp() override {
+        if (planeWidgetInteraction->updated) {
+            PlaneWidgetUpdated();
+            planeWidgetInteraction->updated = false;
+        }
+        vtkInteractorStyleTrackballCamera::OnLeftButtonUp();
     }
 
     void OnKeyPress() override {
@@ -389,7 +425,6 @@ public:
 
     double pressure_value_lower = 75000.0;
     double pressure_value_upper = 100000.0;
-    int current_slice = 0;
 
 
 };
