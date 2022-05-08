@@ -16,6 +16,7 @@
 #include "vtkXMLImageDataReader.h"
 #include "vtkImageReslice.h"
 #include "vtkLookupTable.h"
+#include "vtkTransform.h"
 #include "vtkScalarsToColors.h"
 #include "vtkPlane.h"
 #include "vtkImageActor.h"
@@ -31,6 +32,7 @@
 #include "vtkMetaImageReader.h"
 #include "vtkVolumeProperty.h"
 #include "vtkEasyTransfer.hpp"
+#include "vtkTransformPolyDataFilter.h"
 #include "vtkOpenGLGPUVolumeRayCastMapper.h"
 
 #include "utils.h"
@@ -75,6 +77,10 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     bool heightmapVisible = false;
     vtkSmartPointer<vtkActor> heightmapActor;
     vtkSmartPointer<vtkScalarBarActor> heightmapLegend;
+    vtkSmartPointer<vtkPolyDataMapper> heightmapDataMapper;
+
+    vtkSmartPointer<vtkLookupTable> heightmapLookupTable;
+    vtkSmartPointer<vtkFloatArray> heightmapColors;
 
 /*
  * Rendering Variables
@@ -112,6 +118,8 @@ public:
         renderer->AddActor(outlineActor);
         renderer->AddActor(pressureSliceActor);
         renderer->AddActor(heightmapActor);
+        renderer->AddActor(cloudActor);
+        renderer->AddActor2D(heightmapLegend);
         renderer->SetBackground(0.7, 0.7, 0.7);
         interactor->SetInteractorStyle(this);
         renderWindow->SetSize(500, 500);
@@ -134,7 +142,6 @@ public:
         pressureData->GetOrigin(origin);
 
         pressureReslicer->SetOutputOrigin(origin);
-        //Todo make this not dependent on a fixed size
         int extent[6];
         pressureData->GetExtent(extent);
         extent[5] = 0;
@@ -188,14 +195,14 @@ public:
         // ----------------------------------------------------------------
         // color initialization based on height
         // ----------------------------------------------------------------
-
-        double height_min = 0;//initialization on values of our height data
-        double height_max = 0.244379;
+        double baseHeight = pressureData->GetOrigin()[2];
+        double height_min = baseHeight + 0;//initialization on values of our height data
+        double height_max = baseHeight + 0.244379;
         double numColors = 20;
         int elementsx = 1429;//how many x values on grid
         int elementsy = 1556;//how many y
-        vtkNew<vtkFloatArray> height_colors;
-        height_colors->SetNumberOfValues(elementsx * elementsy);
+        heightmapColors = vtkNew<vtkFloatArray>();
+        heightmapColors->SetNumberOfValues(elementsx * elementsy);
         // ----------------------------------------------------------------
         // read in text file with height data to decide on color
         // ----------------------------------------------------------------
@@ -210,49 +217,56 @@ public:
                 std::getline(myfile, str);
                 double h = std::stod(str) * 0.0001;
                 // Height value color-coded
-                height_colors->SetValue(ix * elementsy + iy, h);
+                heightmapColors->SetValue(ix * elementsy + iy, baseHeight + h);
             }
         }
         // ----------------------------------------------------------------
         // Create a lookup table to share between the mapper and the scalar bar
         // ----------------------------------------------------------------
-        vtkNew<vtkLookupTable> lookupTable;
-        lookupTable->SetScaleToLinear();
-        lookupTable->SetNumberOfTableValues(numColors);
+        heightmapLookupTable = vtkNew<vtkLookupTable>();
+        heightmapLookupTable->SetScaleToLinear();
+        heightmapLookupTable->SetNumberOfTableValues(numColors);
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
             double val = height_min + ((double) i / numColors) * (height_max - height_min);
             getColorCorrespondingTovalue(val, r, g, b, height_max, height_min);
-            lookupTable->SetTableValue(i, r, g, b);
+            heightmapLookupTable->SetTableValue(i, r, g, b);
         }
-        lookupTable->Build();
+        heightmapLookupTable->Build();
         // ----------------------------------------------------------------
         // Create a scalar bar actor for the colormap
         // ----------------------------------------------------------------
         heightmapLegend = vtkNew<vtkScalarBarActor>();
-        heightmapLegend->SetLookupTable(lookupTable);
+        heightmapLegend->SetLookupTable(heightmapLookupTable);
         heightmapLegend->SetNumberOfLabels(3);
         heightmapLegend->SetTitle("height");
         heightmapLegend->SetVerticalTitleSeparation(6);
-        heightmapLegend->GetPositionCoordinate()->SetValue(0.88, 0.1);
-        heightmapLegend->SetWidth(0.1);
+        heightmapLegend->GetPositionCoordinate()->SetValue(0.85, 0.1);
+        heightmapLegend->SetWidth(0.05);
         // ----------------------------------------------------------------
         // Create a triangulated mapper for mesh read from file, color it and link it to the lookup table
         // ----------------------------------------------------------------
         vtkNew<vtkOBJReader> reader;
         reader->SetFileName(getDataPath("/data/heightfield.obj").c_str());
         reader->Update();//read .obj file
-        vtkNew<vtkPolyDataMapper> triangulatedMapper;
-        triangulatedMapper->SetInputConnection(reader->GetOutputPort());//take mesh as input
-        triangulatedMapper->GetInput()->GetPointData()->SetScalars(height_colors);//color it based on our computations
-        triangulatedMapper->SetLookupTable(lookupTable);//link lookup table
-        triangulatedMapper->SetScalarRange(height_min, height_max);
+
+        heightmapDataMapper = vtkNew<vtkPolyDataMapper>();
+        heightmapDataMapper->SetInputConnection(reader->GetOutputPort());
+        heightmapDataMapper->GetInput()->GetPointData()->SetScalars(
+                heightmapColors);//color it based on our computations
+        heightmapDataMapper->SetLookupTable(heightmapLookupTable);//link lookup table
+        heightmapDataMapper->SetScalarRange(height_min, height_max);
         // ----------------------------------------------------------------
         // Create an actor
         // ----------------------------------------------------------------
         heightmapActor = vtkNew<vtkActor>();
-        heightmapActor->SetMapper(triangulatedMapper);
+        heightmapActor->SetMapper(heightmapDataMapper);
         heightmapActor->GetProperty()->SetEdgeVisibility(false);
+        double origin[3];
+        origin[0] = 0;
+        origin[1] = 0;
+        origin[2] = pressureData->GetOrigin()[2];
+        heightmapActor->SetPosition(origin);
     }
 
     void InitializePlaneWidget() {
@@ -310,6 +324,7 @@ public:
         cloudActor = vtkNew<vtkVolume>();
         cloudActor->SetMapper(cloudRaycastMapper);
         cloudActor->SetProperty(volumeProperty);
+        cloudActor->SetVisibility(cloudVisible);
 
         // get renderer for the transfer function editor or a white background
         cloudTransferRenderer = cloudTransferFunction->GetRenderer();
@@ -319,7 +334,7 @@ public:
 
     void Launch() {
         InitializePressureSlicer();
-        //InitializeHeightmap();
+        InitializeHeightmap();
         InitializeClouds();
         StartVisualization();
     }
@@ -377,8 +392,8 @@ public:
         pressureLegend->SetNumberOfLabels(3);
         pressureLegend->SetTitle("pressure");
         pressureLegend->SetVerticalTitleSeparation(6);
-        pressureLegend->GetPositionCoordinate()->SetValue(0.88, 0.1);
-        pressureLegend->SetWidth(0.1);
+        pressureLegend->GetPositionCoordinate()->SetValue(0.93, 0.1);
+        pressureLegend->SetWidth(0.05);
 
         renderer->AddActor2D(pressureLegend);
 
@@ -415,13 +430,7 @@ public:
     void ToggleCloudRendering() {
         cloudVisible = !cloudVisible;
 
-        if (cloudVisible) {
-            renderer->AddActor(cloudActor);
-            //renderWindow->AddRenderer(cloudTransferRenderer);
-        } else {
-            renderer->RemoveActor(cloudActor);
-            //renderWindow->RemoveRenderer(cloudTransferRenderer);
-        }
+        cloudActor->SetVisibility(cloudVisible);
     }
 
     void HandlePressureInputs(const string &key) {
