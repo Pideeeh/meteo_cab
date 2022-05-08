@@ -18,11 +18,13 @@
 #include <vtkImageReslice.h>
 #include <vtkPlane.h>
 #include <vtkImageActor.h>
+#include <vtkPlaneWidget.h>
 #include <vtkImageSliceMapper.h>
 #include <vtkImageResliceMapper.h>
 #include "dataSetDefinitions.h"
 #include <vtkScalarBarActor.h>
 #include <vtkLookupTable.h>
+#include "utils.h"
 
 bool horizontal = true;
 double globalmin, globalmax;
@@ -98,7 +100,7 @@ public:
             else {
                 plane->SetNormal(0,1,0);
             }
-            
+
 
             sliceMapper->SetSlicePlane(plane);
 
@@ -110,19 +112,19 @@ public:
             vtkNew<vtkColorTransferFunction> ctf;
             ctf->SetScaleToLinear();
             ctf->AddRGBPoint(0.0, colors->GetColor3d("MidnightBlue").GetRed(),
-                colors->GetColor3d("MidnightBlue").GetGreen(),
-                colors->GetColor3d("MidnightBlue").GetBlue());
+                             colors->GetColor3d("MidnightBlue").GetGreen(),
+                             colors->GetColor3d("MidnightBlue").GetBlue());
             ctf->AddRGBPoint(0.5, colors->GetColor3d("Gainsboro").GetRed(),
-                colors->GetColor3d("Gainsboro").GetGreen(),
-                colors->GetColor3d("Gainsboro").GetBlue());
+                             colors->GetColor3d("Gainsboro").GetGreen(),
+                             colors->GetColor3d("Gainsboro").GetBlue());
             ctf->AddRGBPoint(1.0, colors->GetColor3d("DarkOrange").GetRed(),
-                colors->GetColor3d("DarkOrange").GetGreen(),
-                colors->GetColor3d("DarkOrange").GetBlue());
+                             colors->GetColor3d("DarkOrange").GetGreen(),
+                             colors->GetColor3d("DarkOrange").GetBlue());
 
             // ----------------------------------------------------------------
             // Create a lookup table to share between the mapper and the scalar bar
             // ----------------------------------------------------------------
-            float min = localmins[(height-19998)*100];//initialization on values of our height data
+            float min = localmins[(height - 19998) * 100];//initialization on values of our height data
             float max = localmaxs[(height - 19998) * 100];
             static const double numColors = 50;
             vtkSmartPointer<vtkLookupTable> lookupTable = vtkSmartPointer<vtkLookupTable>::New();
@@ -130,7 +132,7 @@ public:
             lookupTable->SetNumberOfTableValues(numColors);
             double r, g, b;
             for (int i = 0; i < numColors; i++) {
-                double val = ((double)i / numColors);
+                double val = ((double) i / numColors);
                 double color[3];
                 ctf->GetColor(val, color);
                 lookupTable->SetTableValue(i, color[0], color[1], color[2]);
@@ -199,7 +201,8 @@ public:
 };
 
 
-void CreateColorImage(vtkImageData *input, std::vector<float> &localmins, std::vector<float>& localmaxs, vtkImageData *image) {
+void CreateColorImage(vtkImageData *input, std::vector<float> &localmins, std::vector<float> &localmaxs,
+                      vtkImageData *image) {
     image->SetDimensions(input->GetDimensions());
     image->SetSpacing(input->GetSpacing());
     image->SetOrigin(input->GetOrigin());
@@ -241,8 +244,8 @@ void CreateColorImage(vtkImageData *input, std::vector<float> &localmins, std::v
         float min = maxVal;
         for (unsigned int y = 0; y < dimy; y++) {
             for (unsigned int x = 0; x < dimx; x++) {
-                float* inputColor =
-                    static_cast<float*>(input->GetScalarPointer(x, y, z));
+                float *inputColor =
+                        static_cast<float *>(input->GetScalarPointer(x, y, z));
                 max = std::max(max, inputColor[0]);
                 min = std::min(min, inputColor[0]);
                 mindiff = std::min(max - min, mindiff);
@@ -258,7 +261,7 @@ void CreateColorImage(vtkImageData *input, std::vector<float> &localmins, std::v
                 unsigned char *pixel =
                         static_cast<unsigned char *>(image->GetScalarPointer(x, y, z));
 
-                double t = ((inputColor[0] - min) / std::max((max-min),thres));
+                double t = ((inputColor[0] - min) / std::max((max - min), thres));
                 double color[3];
                 ctf->GetColor(t, color);
                 for (auto j = 0; j < 3; ++j) {
@@ -343,8 +346,11 @@ int main(int, char *[]) {
     data->GetOrigin(origin);
 
     reslicer->SetOutputOrigin(origin);
-    //Todo make this not dependent on a fixed size
-    reslicer->SetOutputExtent(0, 199, 0, 199, 0, 0);
+    int extent[6];
+    data->GetExtent(extent);
+    extent[5] = 0;
+
+    reslicer->SetOutputExtent(extent);
     reslicer->SetInputData(data);
     reslicer->Update();
 

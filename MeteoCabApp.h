@@ -16,6 +16,7 @@
 #include "vtkXMLImageDataReader.h"
 #include "vtkImageReslice.h"
 #include "vtkLookupTable.h"
+#include "vtkTransform.h"
 #include "vtkScalarsToColors.h"
 #include "vtkPlane.h"
 #include "vtkImageActor.h"
@@ -26,12 +27,20 @@
 #include "vtkOutlineFilter.h"
 #include "vtkProperty.h"
 #include "vtkOBJReader.h"
+#include "vtkPlaneWidget.h"
 #include "vtkFloatArray.h"
+#include "vtkMetaImageReader.h"
+#include "vtkVolumeProperty.h"
+#include "vtkEasyTransfer.hpp"
+#include "vtkTransformPolyDataFilter.h"
+#include "vtkOpenGLGPUVolumeRayCastMapper.h"
 
 #include "utils.h"
 #include "dataSetDefinitions.h"
+#include "PlaneWidgetInteraction.h"
 
 using namespace std;
+
 
 class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
     static MeteoCabApp *New() {
@@ -43,7 +52,6 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
 
 /*
  * Pressure Variables
- *
  * */
     bool pressureVisible = true;
     vtkSmartPointer<vtkImageData> pressureData;
@@ -58,6 +66,7 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkScalarBarActor> pressureLegend;
 
     vtkSmartPointer<vtkImageReslice> pressureReslicer;
+    vtkSmartPointer<PlaneWidgetInteraction> planeWidgetInteraction;
 
     std::vector<float> pressure_slice_minima;
     std::vector<float> pressure_slice_maxima;
@@ -68,6 +77,10 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     bool heightmapVisible = false;
     vtkSmartPointer<vtkActor> heightmapActor;
     vtkSmartPointer<vtkScalarBarActor> heightmapLegend;
+    vtkSmartPointer<vtkPolyDataMapper> heightmapDataMapper;
+
+    vtkSmartPointer<vtkLookupTable> heightmapLookupTable;
+    vtkSmartPointer<vtkFloatArray> heightmapColors;
 
 /*
  * Rendering Variables
@@ -76,6 +89,19 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkRenderWindow> renderWindow;
     vtkSmartPointer<vtkRenderWindowInteractor> interactor;
 
+    /*
+     * Cloud variables
+     * */
+    bool cloudVisible = false;
+    vtkSmartPointer<vtkImageData> cloudData;
+    vtkSmartPointer<vtkVolume> cloudActor;
+    vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> cloudRaycastMapper;
+    vtkSmartPointer<vtkEasyTransfer> cloudTransferFunction;
+    vtkSmartPointer<vtkRenderer> cloudTransferRenderer;
+    /*
+ * UI Variables
+ * */
+    vtkSmartPointer<vtkPlaneWidget> planeWidget;
 public:
     void StartVisualization() {
         renderer = vtkNew<vtkRenderer>();
@@ -86,10 +112,14 @@ public:
         interactor = vtkNew<vtkRenderWindowInteractor>();
         interactor->SetRenderWindow(renderWindow);
 
+        InitializePlaneWidget();
+
         renderer->AddActor(contourActor);
         renderer->AddActor(outlineActor);
         renderer->AddActor(pressureSliceActor);
         renderer->AddActor(heightmapActor);
+        renderer->AddActor(cloudActor);
+        renderer->AddActor2D(heightmapLegend);
         renderer->SetBackground(0.7, 0.7, 0.7);
         interactor->SetInteractorStyle(this);
         renderWindow->SetSize(500, 500);
@@ -112,7 +142,6 @@ public:
         pressureData->GetOrigin(origin);
 
         pressureReslicer->SetOutputOrigin(origin);
-        //Todo make this not dependent on a fixed size
         int extent[6];
         pressureData->GetExtent(extent);
         extent[5] = 0;
@@ -166,14 +195,14 @@ public:
         // ----------------------------------------------------------------
         // color initialization based on height
         // ----------------------------------------------------------------
-
-        double height_min = 0;//initialization on values of our height data
-        double height_max = 0.244379;
+        double baseHeight = pressureData->GetOrigin()[2];
+        double height_min = baseHeight + 0;//initialization on values of our height data
+        double height_max = baseHeight + 0.244379;
         double numColors = 20;
         int elementsx = 1429;//how many x values on grid
         int elementsy = 1556;//how many y
-        vtkNew<vtkFloatArray> height_colors;
-        height_colors->SetNumberOfValues(elementsx * elementsy);
+        heightmapColors = vtkNew<vtkFloatArray>();
+        heightmapColors->SetNumberOfValues(elementsx * elementsy);
         // ----------------------------------------------------------------
         // read in text file with height data to decide on color
         // ----------------------------------------------------------------
@@ -188,56 +217,200 @@ public:
                 std::getline(myfile, str);
                 double h = std::stod(str) * 0.0001;
                 // Height value color-coded
-                height_colors->SetValue(ix * elementsy + iy, h);
+                heightmapColors->SetValue(ix * elementsy + iy, baseHeight + h);
             }
         }
         // ----------------------------------------------------------------
         // Create a lookup table to share between the mapper and the scalar bar
         // ----------------------------------------------------------------
-        vtkNew<vtkLookupTable> lookupTable;
-        lookupTable->SetScaleToLinear();
-        lookupTable->SetNumberOfTableValues(numColors);
+        heightmapLookupTable = vtkNew<vtkLookupTable>();
+        heightmapLookupTable->SetScaleToLinear();
+        heightmapLookupTable->SetNumberOfTableValues(numColors);
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
             double val = height_min + ((double) i / numColors) * (height_max - height_min);
             getColorCorrespondingTovalue(val, r, g, b, height_max, height_min);
-            lookupTable->SetTableValue(i, r, g, b);
+            heightmapLookupTable->SetTableValue(i, r, g, b);
         }
-        lookupTable->Build();
+        heightmapLookupTable->Build();
         // ----------------------------------------------------------------
         // Create a scalar bar actor for the colormap
         // ----------------------------------------------------------------
         heightmapLegend = vtkNew<vtkScalarBarActor>();
-        heightmapLegend->SetLookupTable(lookupTable);
+        heightmapLegend->SetLookupTable(heightmapLookupTable);
         heightmapLegend->SetNumberOfLabels(3);
         heightmapLegend->SetTitle("height");
         heightmapLegend->SetVerticalTitleSeparation(6);
-        heightmapLegend->GetPositionCoordinate()->SetValue(0.88, 0.1);
-        heightmapLegend->SetWidth(0.1);
+        heightmapLegend->GetPositionCoordinate()->SetValue(0.85, 0.1);
+        heightmapLegend->SetWidth(0.05);
         // ----------------------------------------------------------------
         // Create a triangulated mapper for mesh read from file, color it and link it to the lookup table
         // ----------------------------------------------------------------
         vtkNew<vtkOBJReader> reader;
         reader->SetFileName(getDataPath("/data/heightfield.obj").c_str());
         reader->Update();//read .obj file
-        vtkNew<vtkPolyDataMapper> triangulatedMapper;
-        triangulatedMapper->SetInputConnection(reader->GetOutputPort());//take mesh as input
-        triangulatedMapper->GetInput()->GetPointData()->SetScalars(height_colors);//color it based on our computations
-        triangulatedMapper->SetLookupTable(lookupTable);//link lookup table
-        triangulatedMapper->SetScalarRange(height_min, height_max);
+
+        heightmapDataMapper = vtkNew<vtkPolyDataMapper>();
+        heightmapDataMapper->SetInputConnection(reader->GetOutputPort());
+        heightmapDataMapper->GetInput()->GetPointData()->SetScalars(
+                heightmapColors);//color it based on our computations
+        heightmapDataMapper->SetLookupTable(heightmapLookupTable);//link lookup table
+        heightmapDataMapper->SetScalarRange(height_min, height_max);
         // ----------------------------------------------------------------
         // Create an actor
         // ----------------------------------------------------------------
         heightmapActor = vtkNew<vtkActor>();
-        heightmapActor->SetMapper(triangulatedMapper);
+        heightmapActor->SetMapper(heightmapDataMapper);
         heightmapActor->GetProperty()->SetEdgeVisibility(false);
+        double origin[3];
+        origin[0] = 0;
+        origin[1] = 0;
+        origin[2] = pressureData->GetOrigin()[2];
+        heightmapActor->SetPosition(origin);
+    }
+
+    void InitializePlaneWidget() {
+        planeWidget = vtkNew<vtkPlaneWidget>();
+        planeWidget->SetInteractor(interactor);
+        planeWidget->SetRepresentationToOutline();
+
+        planeWidgetInteraction = vtkNew<PlaneWidgetInteraction>();
+        planeWidgetInteraction->dataSpace = pressureData;
+        planeWidgetInteraction->app = this;
+        planeWidget->AddObserver(vtkCommand::InteractionEvent, planeWidgetInteraction);
+        planeWidget->AddObserver(vtkCommand::EndInteractionEvent, planeWidgetInteraction);
+
+        double center[3];
+        pressureData->GetCenter(center);
+        double origin[3];
+        pressureData->GetOrigin(origin);
+        center[2] = origin[2];
+        double bounds[6];
+        pressureData->GetBounds(bounds);
+        planeWidget->SetCenter(center);
+        planeWidget->SetOrigin(bounds[0], bounds[2], bounds[4]);
+        planeWidget->SetPoint1(bounds[0], bounds[3], bounds[4]);
+        planeWidget->SetPoint2(bounds[1], bounds[2], bounds[4]);
+
+
+        //planeWidget->PlaceWidget(bounds);
+        planeWidget->On();
+    }
+
+    void InitializeClouds() {
+
+        vtkNew<vtkMetaImageReader> reader;
+        reader->SetFileName(getDataPath("/data/cloudyness.mhd").c_str());
+        reader->Update();
+        cloudData = reader->GetOutput();
+
+        cloudRaycastMapper = vtkNew<vtkOpenGLGPUVolumeRayCastMapper>();
+        cloudRaycastMapper->SetInputData(cloudData);
+
+        // create transfer function
+        cloudTransferFunction = vtkNew<vtkEasyTransfer>();
+        cloudTransferFunction->SetColorUniform(1.0, 1.0, 1.0);        // set initial color map
+        cloudTransferFunction->SetColorRange(0, 0.00507);    // set the value range that is mapped to color
+        cloudTransferFunction->SetCloudOpacityRange(0, 0.00507, 3, 1000,
+                                                    0.9);    // set the value range that is mapped to opacity
+        cloudTransferFunction->RefreshImage();
+
+        // assign transfer function to volume properties
+        vtkSmartPointer<vtkVolumeProperty> volumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
+        volumeProperty->SetColor(cloudTransferFunction->GetColorTransferFunction());
+        volumeProperty->SetScalarOpacity(cloudTransferFunction->GetOpacityTransferFunction());
+
+        // create volume actor and assign mapper and properties
+        cloudActor = vtkNew<vtkVolume>();
+        cloudActor->SetMapper(cloudRaycastMapper);
+        cloudActor->SetProperty(volumeProperty);
+        cloudActor->SetVisibility(cloudVisible);
+
+        // get renderer for the transfer function editor or a white background
+        cloudTransferRenderer = cloudTransferFunction->GetRenderer();
+        cloudTransferRenderer->SetViewport(0.66666, 0, 1, 1);
+
     }
 
     void Launch() {
         InitializePressureSlicer();
-        //InitializeHeightmap();
-
+        InitializeHeightmap();
+        InitializeClouds();
         StartVisualization();
+    }
+
+    void UpdatePressureSlicer() {
+
+        int dimensions[3];
+        pressureData->GetDimensions(dimensions);
+
+        double dataOrigin[3];
+        pressureData->GetOrigin(dataOrigin);
+
+        double dataSpacing = pressureData->GetSpacing()[2];
+        double origin[3];
+        pressureReslicer->GetOutputOrigin(origin);
+
+        vtkNew<vtkPlane> plane;
+        planeWidget->GetPlane(plane);
+
+        double planeOrigin[3];
+        plane->GetOrigin(planeOrigin);
+
+        double sliceHeight = planeOrigin[2];
+        double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
+
+        pressureSliceMapper->SetSlicePlane(plane);
+
+        origin[2] = sliceHeight;
+        pressureReslicer->SetOutputOrigin(origin);
+        pressureReslicer->Update();
+
+        vtkSmartPointer<vtkColorTransferFunction> ctf = blueToOrangeTransferFunction();
+
+        // ----------------------------------------------------------------
+        // Create a lookup table to share between the mapper and the scalar bar
+        // ----------------------------------------------------------------
+        float min = pressure_slice_minima[current_slice];
+        float max = pressure_slice_maxima[current_slice];
+        static const double numColors = 10;
+        vtkSmartPointer<vtkLookupTable> lookupTable = vtkNew<vtkLookupTable>();
+        lookupTable->SetScaleToLinear();
+        lookupTable->SetNumberOfTableValues(numColors);
+        for (int i = 0; i < numColors; i++) {
+            double val = ((double) i / numColors);
+            double color[3];
+            ctf->GetColor(val, color);
+            lookupTable->SetTableValue(i, color[0], color[1], color[2]);
+        }
+        lookupTable->Build();
+        lookupTable->SetTableRange(min, max);
+        // ----------------------------------------------------------------
+        // Create a scalar bar actor for the colormap
+        // ----------------------------------------------------------------
+        pressureLegend->SetLookupTable(lookupTable);
+        pressureLegend->SetNumberOfLabels(3);
+        pressureLegend->SetTitle("pressure");
+        pressureLegend->SetVerticalTitleSeparation(6);
+        pressureLegend->GetPositionCoordinate()->SetValue(0.93, 0.1);
+        pressureLegend->SetWidth(0.05);
+
+        renderer->AddActor2D(pressureLegend);
+
+        pressureContourFilter->GenerateValues(10, pressure_value_lower, pressure_value_upper);
+        pressureContourFilter->Update();
+        pressureContourMapper->Update();
+        pressureSliceActor->Update();
+
+        double *pos = contourActor->GetPosition();
+        contourActor->SetPosition(pos);
+
+    }
+
+    void PlaneWidgetUpdated() {
+        UpdatePressureSlicer();
+
+        renderWindow->Render();
     }
 
 
@@ -252,37 +425,17 @@ public:
         heightmapVisible = !heightmapVisible;
         heightmapActor->SetVisibility(heightmapVisible);
         heightmapLegend->SetVisibility(heightmapVisible);
+    }
 
+    void ToggleCloudRendering() {
+        cloudVisible = !cloudVisible;
+
+        cloudActor->SetVisibility(cloudVisible);
     }
 
     void HandlePressureInputs(const string &key) {
-
-        int dimensions[3];
-        pressureData->GetDimensions(dimensions);
-
-        double dataOrigin[3];
-        pressureData->GetOrigin(dataOrigin);
-
-        double dataSpacing = pressureData->GetSpacing()[2];
-        double origin[3];
-        pressureReslicer->GetOutputOrigin(origin);
-        bool pressed = false;
         // Handle an arrow key
-        if (key == "Up") {
-            current_slice++;
-            if (current_slice >= dimensions[2]) {
-                current_slice = dimensions[2] - 1;
-            }
-            pressed = true;
-        }
-
-        if (key == "Down") {
-            current_slice--;
-            if (current_slice < 0) {
-                current_slice = 0;
-            }
-            pressed = true;
-        }
+        bool pressed = false;
         if (key == "Right") {
             pressure_value_lower += 100;
             pressure_value_upper += 100;
@@ -297,67 +450,16 @@ public:
         }
 
         if (pressed) {
-            double sliceHeight = dataOrigin[2] + current_slice * dataSpacing;
-
-            vtkNew<vtkPlane> plane;
-            plane->SetOrigin(5, 49, sliceHeight);
-            plane->SetNormal(0, 0, 1);
-
-            pressureSliceMapper->SetSlicePlane(plane);
-
-            origin[2] = sliceHeight;
-            pressureReslicer->SetOutputOrigin(origin);
-            pressureReslicer->Update();
-
-            vtkNew<vtkColorTransferFunction> ctf;
-            ctf->SetScaleToLinear();
-            ctf->AddRGBPoint(0.0, colors->GetColor3d("MidnightBlue").GetRed(),
-                             colors->GetColor3d("MidnightBlue").GetGreen(),
-                             colors->GetColor3d("MidnightBlue").GetBlue());
-            ctf->AddRGBPoint(0.5, colors->GetColor3d("Gainsboro").GetRed(),
-                             colors->GetColor3d("Gainsboro").GetGreen(),
-                             colors->GetColor3d("Gainsboro").GetBlue());
-            ctf->AddRGBPoint(1.0, colors->GetColor3d("DarkOrange").GetRed(),
-                             colors->GetColor3d("DarkOrange").GetGreen(),
-                             colors->GetColor3d("DarkOrange").GetBlue());
-
-            // ----------------------------------------------------------------
-            // Create a lookup table to share between the mapper and the scalar bar
-            // ----------------------------------------------------------------
-            float min = pressure_slice_minima[current_slice];
-            float max = pressure_slice_maxima[current_slice];
-            static const double numColors = 10;
-            vtkSmartPointer<vtkLookupTable> lookupTable = vtkNew<vtkLookupTable>();
-            lookupTable->SetScaleToLinear();
-            lookupTable->SetNumberOfTableValues(numColors);
-            for (int i = 0; i < numColors; i++) {
-                double val = ((double) i / numColors);
-                double color[3];
-                ctf->GetColor(val, color);
-                lookupTable->SetTableValue(i, color[0], color[1], color[2]);
-            }
-            lookupTable->Build();
-            lookupTable->SetTableRange(min, max);
-            // ----------------------------------------------------------------
-            // Create a scalar bar actor for the colormap
-            // ----------------------------------------------------------------
-            pressureLegend->SetLookupTable(lookupTable);
-            pressureLegend->SetNumberOfLabels(3);
-            pressureLegend->SetTitle("pressure");
-            pressureLegend->SetVerticalTitleSeparation(6);
-            pressureLegend->GetPositionCoordinate()->SetValue(0.88, 0.1);
-            pressureLegend->SetWidth(0.1);
-
-            renderer->AddActor2D(pressureLegend);
-
-            pressureContourFilter->GenerateValues(10, pressure_value_lower, pressure_value_upper);
-            pressureContourFilter->Update();
-            pressureContourMapper->Update();
-            pressureSliceActor->Update();
-
-            double *pos = contourActor->GetPosition();
-            contourActor->SetPosition(pos);
+            UpdatePressureSlicer();
         }
+    }
+
+    void OnLeftButtonUp() override {
+        if (planeWidgetInteraction->updated) {
+            PlaneWidgetUpdated();
+            planeWidgetInteraction->updated = false;
+        }
+        vtkInteractorStyleTrackballCamera::OnLeftButtonUp();
     }
 
     void OnKeyPress() override {
@@ -375,7 +477,9 @@ public:
         if (key == "2") {
             ToggleHeightmap();
         }
-
+        if (key == "3") {
+            ToggleCloudRendering();
+        }
         if (pressureVisible) {
             HandlePressureInputs(key);
         }
@@ -389,7 +493,6 @@ public:
 
     double pressure_value_lower = 75000.0;
     double pressure_value_upper = 100000.0;
-    int current_slice = 0;
 
 
 };
