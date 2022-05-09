@@ -34,10 +34,14 @@
 #include "vtkEasyTransfer.hpp"
 #include "vtkTransformPolyDataFilter.h"
 #include "vtkOpenGLGPUVolumeRayCastMapper.h"
+#include "vtkMaskPoints.h"
+#include "vtkGlyphSource2D.h"
+#include "vtkGlyph2D.h"
 
 #include "utils.h"
 #include "dataSetDefinitions.h"
 #include "PlaneWidgetInteraction.h"
+#include "BetterVtkSlicer.h"
 
 using namespace std;
 
@@ -55,6 +59,7 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
  * */
     bool pressureVisible = true;
     vtkSmartPointer<vtkImageData> pressureData;
+    vtkSmartPointer<vtkImageData> slice;
     vtkSmartPointer<vtkImageData> pressureDataColors;
     vtkSmartPointer<vtkImageActor> pressureSliceActor;
     vtkSmartPointer<vtkActor> contourActor;
@@ -82,6 +87,18 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkLookupTable> heightmapLookupTable;
     vtkSmartPointer<vtkFloatArray> heightmapColors;
 
+
+/*
+ * 2D Wind Variables
+ * */
+    int windMode = 1;
+    vtkSmartPointer<vtkActor> horizontalWindVectorActor;
+    vtkSmartPointer<vtkImageData> horizontalWindData;
+    vtkSmartPointer<BetterVtkSlicer> horizontalWindSlicer;
+    vtkSmartPointer<vtkPolyDataMapper> windMapper;
+    vtkSmartPointer<vtkGlyph2D> windGlyphs;
+    vtkSmartPointer<vtkGlyphSource2D> windGlyphSource;
+    vtkSmartPointer<vtkMaskPoints> windMask;
 /*
  * Rendering Variables
  * */
@@ -120,6 +137,7 @@ public:
         renderer->AddActor(heightmapActor);
         renderer->AddActor(cloudActor);
         renderer->AddActor2D(heightmapLegend);
+        renderer->AddActor(horizontalWindVectorActor);
         renderer->SetBackground(0.7, 0.7, 0.7);
         interactor->SetInteractorStyle(this);
         renderWindow->SetSize(500, 500);
@@ -292,8 +310,6 @@ public:
         planeWidget->SetPoint1(bounds[0], bounds[3], bounds[4]);
         planeWidget->SetPoint2(bounds[1], bounds[2], bounds[4]);
 
-
-        //planeWidget->PlaceWidget(bounds);
         planeWidget->On();
     }
 
@@ -332,9 +348,61 @@ public:
 
     }
 
+    void InitializeHorizontalWind() {
+        vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
+        reader->SetFileName(getDataPath("/data/2d_wind_full.vti").c_str());
+        reader->Update();
+        horizontalWindData = reader->GetOutput();
+        horizontalWindData->GetPointData()->SetActiveVectors("2d_velocity");
+
+        double origin[3];
+        horizontalWindData->GetOrigin(origin);
+
+        horizontalWindSlicer = vtkNew<BetterVtkSlicer>();
+        horizontalWindSlicer->SetZSlice();
+        horizontalWindSlicer->SetHeight(0);
+        horizontalWindSlicer->SetInputData(horizontalWindData);
+        horizontalWindSlicer->Update();
+
+        windMask = vtkNew<vtkMaskPoints>();
+
+        windMask->SetInputData(horizontalWindSlicer->GetOutput());
+        windMask->RandomModeOn();
+        windMask->SetRandomModeType(2);
+        windMask->SetMaximumNumberOfPoints(1000);
+        windMask->SetOnRatio(50);
+        windMask->Update();
+
+        windGlyphSource = vtkNew<vtkGlyphSource2D>();
+        windGlyphSource->SetGlyphTypeToArrow();
+        windGlyphSource->FilledOff();
+
+        windGlyphs = vtkNew<vtkGlyph2D>();
+        windGlyphs->SetInputConnection(windMask->GetOutputPort());
+        windGlyphs->SetSourceConnection(windGlyphSource->GetOutputPort());
+        windGlyphs->OrientOn();
+        windGlyphs->SetScaleModeToScaleByVector();
+        windGlyphs->SetScaleFactor(0.04);
+        windGlyphs->Update();
+
+        windMapper = vtkNew<vtkPolyDataMapper>();
+        windMapper->SetInputConnection(windGlyphs->GetOutputPort());
+        windMapper->Update();
+
+        horizontalWindVectorActor = vtkNew<vtkActor>();
+        horizontalWindVectorActor->SetMapper(windMapper);
+        horizontalWindVectorActor->GetProperty()->SetColor(colors->GetColor3d("Blue").GetData());
+        double position[3];
+        horizontalWindVectorActor->GetPosition(position);
+        position[2] = horizontalWindData->GetBounds()[4];
+        horizontalWindVectorActor->SetPosition(position);
+    }
+
     void Launch() {
         InitializePressureSlicer();
-        InitializeHeightmap();
+        //InitializeHeightmap();
+
+        InitializeHorizontalWind();
         InitializeClouds();
         StartVisualization();
     }
@@ -407,8 +475,53 @@ public:
 
     }
 
+    void UpdateWindSlice() {
+        int dimensions[3];
+        horizontalWindData->GetDimensions(dimensions);
+
+        double dataOrigin[3];
+        horizontalWindData->GetOrigin(dataOrigin);
+
+        double dataSpacing = horizontalWindData->GetSpacing()[2];
+        double origin[3];
+        horizontalWindSlicer->GetOutput()->GetOrigin(origin);
+
+        vtkNew<vtkPlane> plane;
+        planeWidget->GetPlane(plane);
+        double planeOrigin[3];
+        plane->GetOrigin(planeOrigin);
+
+        double sliceHeight = planeOrigin[2];
+        double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
+
+        horizontalWindSlicer->SetHeight((int) current_slice);
+        horizontalWindSlicer->Update();
+
+        windMask->SetInputData(horizontalWindSlicer->GetOutput());
+
+        windMask->Update();
+        windGlyphs->Update();
+        windGlyphSource->Update();
+        windMapper->Update();
+        renderer->RemoveActor(horizontalWindVectorActor);
+
+        horizontalWindVectorActor = vtkNew<vtkActor>();
+        horizontalWindVectorActor->SetMapper(windMapper);
+        horizontalWindVectorActor->GetProperty()->SetColor(colors->GetColor3d("Blue").GetData());
+        double position[3];
+        horizontalWindVectorActor->GetPosition(position);
+        position[2] = sliceHeight;
+        horizontalWindVectorActor->SetPosition(position);
+
+        renderer->AddActor(horizontalWindVectorActor);
+        renderer->Render();
+
+        renderWindow->Render();
+    }
+
     void PlaneWidgetUpdated() {
         UpdatePressureSlicer();
+        UpdateWindSlice();
 
         renderWindow->Render();
     }
@@ -462,6 +575,21 @@ public:
         vtkInteractorStyleTrackballCamera::OnLeftButtonUp();
     }
 
+    void ToggleWindMode() {
+        if (windMode == 1) {
+            windMode = 2;
+            horizontalWindVectorActor->SetVisibility(true);
+        }
+        if (windMode == 1) {
+            windMode = 0;
+            horizontalWindVectorActor->SetVisibility(false);
+        } else {
+            horizontalWindVectorActor->SetVisibility(true);
+            windMode = 1;
+        }
+
+    }
+
     void OnKeyPress() override {
         // Get the keypress
         vtkRenderWindowInteractor *rwi = this->Interactor;
@@ -479,6 +607,9 @@ public:
         }
         if (key == "3") {
             ToggleCloudRendering();
+        }
+        if (key == "4") {
+            ToggleWindMode();
         }
         if (pressureVisible) {
             HandlePressureInputs(key);
