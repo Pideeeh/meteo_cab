@@ -30,6 +30,10 @@ add_executable(Wind_2d wind_2d.cpp)
 target_link_libraries(Wind_2d PRIVATE ${VTK_LIBRARIES})
 vtk_module_autoinit(TARGETS Wind_2d MODULES ${VTK_LIBRARIES})
 
+add_executable(Resampling resampling.cpp)
+target_link_libraries(Resampling PRIVATE ${VTK_LIBRARIES})
+vtk_module_autoinit(TARGETS Resampling MODULES ${VTK_LIBRARIES})
+
 
 add_executable(App MeteoAppLauncher.cpp)
 target_link_libraries(App PRIVATE ${VTK_LIBRARIES})
