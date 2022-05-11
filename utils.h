@@ -126,4 +126,62 @@ void getColorCorrespondingTovalue(double val, double &r, double &g, double &b, d
     }
 }
 
+
+void CreateGlobalColorImage(vtkImageData* input, vtkImageData* image) {
+    image->SetDimensions(input->GetDimensions());
+    image->SetSpacing(input->GetSpacing());
+    image->SetOrigin(input->GetOrigin());
+
+    vtkNew<vtkNamedColors> colors;
+    vtkNew<vtkColorTransferFunction> ctf;
+    ctf->SetScaleToLinear();
+    ctf->AddRGBPoint(0.0, colors->GetColor3d("MidnightBlue").GetRed(),
+                     colors->GetColor3d("MidnightBlue").GetGreen(),
+                     colors->GetColor3d("MidnightBlue").GetBlue());
+    ctf->AddRGBPoint(0.5, colors->GetColor3d("Gainsboro").GetRed(),
+                     colors->GetColor3d("Gainsboro").GetGreen(),
+                     colors->GetColor3d("Gainsboro").GetBlue());
+    ctf->AddRGBPoint(1.0, colors->GetColor3d("DarkOrange").GetRed(),
+                     colors->GetColor3d("DarkOrange").GetGreen(),
+                     colors->GetColor3d("DarkOrange").GetBlue());
+
+    double range[2];
+    input->GetScalarRange(range);
+
+    double maxVal = range[1];
+    double minVal = range[0];
+    double globalmin = minVal;
+    double globalmax = maxVal;
+
+    cout << globalmin << endl;
+    cout << globalmax << endl;
+
+    image->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
+
+
+    int dimx = image->GetDimensions()[0];
+    int dimy = image->GetDimensions()[1];
+    const int dimz = image->GetDimensions()[2];
+
+    for (unsigned int z = 0; z < dimz; z++) {
+        for (unsigned int y = 0; y < dimy; y++) {
+            for (unsigned int x = 0; x < dimx; x++) {
+                float* inputColor =
+                        static_cast<float*>(input->GetScalarPointer(x, y, z));
+                unsigned char* pixel =
+                        static_cast<unsigned char*>(image->GetScalarPointer(x, y, z));
+
+                double t = ((inputColor[0] - minVal) / (maxVal - minVal));
+                double color[3];
+                ctf->GetColor(t, color);
+                for (auto j = 0; j < 3; ++j) {
+                    pixel[j] = (unsigned char)(color[j] * 255);
+                }
+            }
+        }
+    }
+}
+
+
+
 #endif //VIS2021_UTILS_H

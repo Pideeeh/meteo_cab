@@ -36,6 +36,7 @@
 #include "vtkOpenGLGPUVolumeRayCastMapper.h"
 #include "vtkMaskPoints.h"
 #include "vtkGlyphSource2D.h"
+#include "vtkGradientFilter.h"
 #include "vtkGlyph2D.h"
 
 #include "utils.h"
@@ -92,6 +93,12 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
  * 2D Wind Variables
  * */
     int windMode = 1;
+    bool divergenceVisible = false;
+    vtkSmartPointer<vtkImageData> horizontalWindDivergence;
+    vtkSmartPointer<vtkImageData> horizontalWindDivergenceColors;
+    vtkSmartPointer<vtkImageActor> horizontalWindDivergenceActor;
+    vtkSmartPointer<vtkImageResliceMapper> horizontalWindDivergenceSliceMapper;
+
     vtkSmartPointer<vtkActor> horizontalWindVectorActor;
     vtkSmartPointer<vtkImageData> horizontalWindData;
     vtkSmartPointer<BetterVtkSlicer> horizontalWindSlicer;
@@ -138,6 +145,7 @@ public:
         renderer->AddActor(cloudActor);
         renderer->AddActor2D(heightmapLegend);
         renderer->AddActor(horizontalWindVectorActor);
+        renderer->AddActor(horizontalWindDivergenceActor);
         renderer->SetBackground(0.7, 0.7, 0.7);
         interactor->SetInteractorStyle(this);
         renderWindow->SetSize(500, 500);
@@ -265,7 +273,7 @@ public:
         // Create a triangulated mapper for mesh read from file, color it and link it to the lookup table
         // ----------------------------------------------------------------
         vtkNew<vtkOBJReader> reader;
-        reader->SetFileName(getDataPath("/data/heightfield.obj").c_str());
+        reader->SetFileName(getDataPath("/data/downsampled_terrain.obj").c_str());
         reader->Update();//read .obj file
 
         heightmapDataMapper = vtkNew<vtkPolyDataMapper>();
@@ -398,11 +406,52 @@ public:
         horizontalWindVectorActor->SetPosition(position);
     }
 
+    void ComputeWindDivergence() {
+
+        vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
+        reader->SetFileName(getDataPath("/data/2d_wind_full.vti").c_str());
+        reader->Update();
+
+        log(reader->GetOutput());
+
+        auto info = reader->GetOutput()->GetPointData()->GetArray("2d_velocity")->GetInformation();
+
+        vtkNew<vtkGradientFilter> gradientFilter;
+        gradientFilter->SetInputConnection(0, reader->GetOutputPort());
+        gradientFilter->Compute
+        gradientFilter->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "2d_velocity");
+        gradientFilter->ComputeDivergenceOn();
+        gradientFilter->Update();
+
+        auto div = gradientFilter->GetOutput();
+        vtkImageData *input = vtkImageData::SafeDownCast(div);
+        log(input);
+        input->GetPointData()->SetActiveScalars("Divergence");
+        log(input);
+
+
+        horizontalWindDivergenceColors = vtkNew<vtkImageData>();
+        CreateGlobalColorImage(input, horizontalWindDivergenceColors);
+
+
+        vtkNew<vtkPlane> plane;
+        plane->SetOrigin(5, 49, 19998);
+        plane->SetNormal(0, 0, 1);
+
+        horizontalWindDivergenceSliceMapper = vtkNew<vtkImageResliceMapper>();
+        horizontalWindDivergenceSliceMapper->SetInputData(horizontalWindDivergenceColors);
+        horizontalWindDivergenceSliceMapper->SetSlicePlane(plane);
+
+        horizontalWindDivergenceActor = vtkNew<vtkImageActor>();
+        horizontalWindDivergenceActor->SetMapper(horizontalWindDivergenceSliceMapper);
+    }
+
     void Launch() {
         InitializePressureSlicer();
-        //InitializeHeightmap();
+        InitializeHeightmap();
 
         InitializeHorizontalWind();
+        ComputeWindDivergence();
         InitializeClouds();
         StartVisualization();
     }
@@ -513,6 +562,10 @@ public:
         position[2] = sliceHeight;
         horizontalWindVectorActor->SetPosition(position);
 
+        if(windMode == 2){
+            horizontalWindVectorActor->SetVisibility(false);
+        }
+
         renderer->AddActor(horizontalWindVectorActor);
         renderer->Render();
 
@@ -522,6 +575,7 @@ public:
     void PlaneWidgetUpdated() {
         UpdatePressureSlicer();
         UpdateWindSlice();
+        UpdateDivergenceSlicer();
 
         renderWindow->Render();
     }
@@ -576,17 +630,33 @@ public:
     }
 
     void ToggleWindMode() {
-        if (windMode == 1) {
-            windMode = 2;
-            horizontalWindVectorActor->SetVisibility(true);
-        }
-        if (windMode == 1) {
-            windMode = 0;
+        windMode = (windMode + 1) % 3;
+        if (windMode == 2) {
             horizontalWindVectorActor->SetVisibility(false);
         } else {
             horizontalWindVectorActor->SetVisibility(true);
-            windMode = 1;
         }
+
+    }
+
+    void UpdateDivergenceSlicer() {
+        if (!divergenceVisible) return;
+
+        vtkNew<vtkPlane> plane;
+        planeWidget->GetPlane(plane);
+
+        horizontalWindDivergenceSliceMapper->SetSlicePlane(plane);
+
+    }
+
+    void ToggleDivergence() {
+        divergenceVisible = !divergenceVisible;
+        if (!divergenceVisible && pressureVisible) {
+            TogglePressure();
+        }
+        UpdateDivergenceSlicer();
+
+        horizontalWindDivergenceActor->SetVisibility(divergenceVisible);
 
     }
 
@@ -610,6 +680,9 @@ public:
         }
         if (key == "4") {
             ToggleWindMode();
+        }
+        if (key == "5") {
+            ToggleDivergence();
         }
         if (pressureVisible) {
             HandlePressureInputs(key);
