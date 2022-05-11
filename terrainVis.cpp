@@ -28,15 +28,15 @@ void getColorCorrespondingTovalue(double val, double &r, double &g, double &b) {
     static const int numColorNodes = 9;
     double color[numColorNodes][3] =
             {
-                    0, 0.7, 0, // green
-                    0, 0.6, 0.8,
-                    0, 0.4000, 0.6745,
-                    0, 0.5000, 0.7745,
-                    0, 0.5000, 0.8,
-                    0, 0.6000, 0.85,
-                    0, 0.6000, 0.9,
-                    0, 0.7000, 0.95,
-                    0, 0.7000, 1  // Blue
+                    0.1, 0.5, 0.1, // green
+                    0.1, 0.5, 0.5,
+                    0.1, 0.5, 0.8,
+                    0.2, 0.8, 1,  // Blue
+                    0.3, 0.9, 1,
+                    0.8, 0.95,1,
+                    0.98,0.98,1,
+                    1,1,1,
+                    1,1,1//white
             };
 
     for (int i = 0; i < (numColorNodes - 1); i++) {
@@ -54,34 +54,18 @@ void getColorCorrespondingTovalue(double val, double &r, double &g, double &b) {
 
 
 int main(int, char *[]) {
-    // ----------------------------------------------------------------
-    // color initialization based on height
-    // ----------------------------------------------------------------
-    int elementsx = 1429;//how many x values on grid
-    int elementsy = 1556;//how many y
+    // Create a triangulated mapper for mesh read from file, color it based on height
+    vtkNew<vtkOBJReader> reader;
+    reader->SetFileName(getDataPath("/data/downsampled_terrain.obj").c_str());
+    reader->Update();//read .obj file
+    vtkSmartPointer<vtkPolyDataMapper> triangulatedMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    triangulatedMapper->SetInputConnection(reader->GetOutputPort());//take mesh as input
+    //color the mesh
     vtkSmartPointer<vtkFloatArray> colors = vtkSmartPointer<vtkFloatArray>::New();
-    colors->SetNumberOfValues(elementsx * elementsy);
-    // ----------------------------------------------------------------
-    // read in text file with height data to decide on color
-    // ----------------------------------------------------------------
-    std::cout << getDataPath("/data/height_values.txt") << std::endl;
-    std::ifstream myfile(getDataPath("/data/height_values.txt"));
-    if (!myfile.is_open()) {
-        std::cout << "error opening file" << std::endl;
-        return -1;
+    colors->SetNumberOfValues(229972);
+    for (int i = 0; i < 229972; i++) {//go over vertices
+        colors->SetValue(i, triangulatedMapper->GetInput()->GetPoint(i)[2]);
     }
-    for (unsigned int ix = 0; ix < elementsx; ix++) {
-        for (unsigned int iy = 0; iy < elementsy; iy++) {
-            std::string str;
-            std::getline(myfile, str);
-            double h = std::stod(str) * 0.0001;
-            // Height value color-coded
-            colors->SetValue(ix * elementsy + iy, h);
-        }
-    }
-    // ----------------------------------------------------------------
-    // Create a lookup table to share between the mapper and the scalar bar
-    // ----------------------------------------------------------------
     vtkSmartPointer<vtkLookupTable> lookupTable = vtkSmartPointer<vtkLookupTable>::New();
     lookupTable->SetScaleToLinear();
     lookupTable->SetNumberOfTableValues(numColors);
@@ -91,10 +75,8 @@ int main(int, char *[]) {
         getColorCorrespondingTovalue(val, r, g, b);
         lookupTable->SetTableValue(i, r, g, b);
     }
+    lookupTable->SetTableRange(min, max);
     lookupTable->Build();
-    // ----------------------------------------------------------------
-    // Create a scalar bar actor for the colormap
-    // ----------------------------------------------------------------
     vtkSmartPointer<vtkScalarBarActor> legend = vtkSmartPointer<vtkScalarBarActor>::New();
     legend->SetLookupTable(lookupTable);
     legend->SetNumberOfLabels(3);
@@ -102,14 +84,6 @@ int main(int, char *[]) {
     legend->SetVerticalTitleSeparation(6);
     legend->GetPositionCoordinate()->SetValue(0.88, 0.1);
     legend->SetWidth(0.1);
-    // ----------------------------------------------------------------
-    // Create a triangulated mapper for mesh read from file, color it and link it to the lookup table
-    // ----------------------------------------------------------------
-    vtkNew<vtkOBJReader> reader;
-    reader->SetFileName(getDataPath("/data/heightfield.obj").c_str());
-    reader->Update();//read .obj file
-    vtkSmartPointer<vtkPolyDataMapper> triangulatedMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    triangulatedMapper->SetInputConnection(reader->GetOutputPort());//take mesh as input
     triangulatedMapper->GetInput()->GetPointData()->SetScalars(colors);//color it based on our computations
     triangulatedMapper->SetLookupTable(lookupTable);//link lookup table
     triangulatedMapper->SetScalarRange(min, max);
