@@ -67,7 +67,8 @@ int main()
 	//----------------------------
 	// this is dataset specific
 	//---------------------------------
-	vtkSmartPointer<vtkAbstractArray> arr = pts->GetAbstractArray("pres");//adapt
+	char* array_name = "pres"; //adapt
+	vtkSmartPointer<vtkAbstractArray> arr = pts->GetAbstractArray(array_name);
 	//----------------------------------
 	vtkSmartPointer<vtkFloatArray> float_array = vtkFloatArray::SafeDownCast(arr);
 
@@ -87,6 +88,16 @@ int main()
 	bd[4] = dat->GetBounds()[4];
 	bd[5] = dat->GetBounds()[5];
 	regular_data->AllocateScalars(VTK_DOUBLE, 1);
+
+	vtkSmartPointer<vtkPointData> pts_reg = regular_data->GetPointData();
+	//----------------------------
+	// this is dataset specific
+	//---------------------------------
+	vtkSmartPointer<vtkAbstractArray> arr_reg = pts_reg->GetAbstractArray("ImageScalars");
+	arr_reg->SetName(array_name);
+
+
+
 	ifstream myfile;
 	myfile.open(getDataPath("/data/height.txt").c_str());//For wa, adapt to height2.txt. For all others, adapt to height.txt
 	string str;
@@ -123,6 +134,7 @@ int main()
 			}
 		}
 	}
+	cout << regular_data->GetPointData()->GetArrayName(0) << endl;
 
 	vtkSmartPointer<vtkXMLImageDataWriter> writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
 	writer->SetFileName(getDataPath("/data/regular_data.vti").c_str());
