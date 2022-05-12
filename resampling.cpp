@@ -24,9 +24,9 @@ using namespace std;
 
 //gives slice indices and coeff for upper
 void get_surrounding_slices(double height, int& upper, int& lower, double& coeff, std::vector<double>& sample_height) {
-	if (height <= sample_height[149]) {//lowest part
-		upper = 149;
-		lower = 149;
+	if (height <= sample_height[sample_height.size()-1]) {//lowest part
+		upper = sample_height.size() - 1;
+		lower = sample_height.size() - 1;
 		coeff = 1;
 		return;
 	}
@@ -39,7 +39,7 @@ void get_surrounding_slices(double height, int& upper, int& lower, double& coeff
 	upper = 0;
 	lower = 0;
 	double upper_val, lower_val;
-	for (int i = 0; i < 150; i++) {
+	for (int i = 0; i < sample_height.size(); i++) {
 		if (sample_height[i] < height) {
 			lower = i;
 			lower_val = sample_height[i];
@@ -57,7 +57,7 @@ int main()
 	//----------------------------
 	// this is dataset specific
 	//---------------------------------
-	reader->SetFileName(getDataPath("/data/pres/pres_10.vti_scaled.vti").c_str());//adapt
+	reader->SetFileName(getDataPath("/data/wa/wa_10.vti_scaled.vti").c_str());//adapt
 	//--------------------------
 	reader->Update();
 	vtkSmartPointer<vtkImageData> dat = vtkSmartPointer<vtkImageData>::New();
@@ -67,11 +67,11 @@ int main()
 	//----------------------------
 	// this is dataset specific
 	//---------------------------------
-	vtkSmartPointer<vtkAbstractArray> arr = pts->GetAbstractArray("pres");//adapt for others
+	vtkSmartPointer<vtkAbstractArray> arr = pts->GetAbstractArray("wa");//adapt for others
 	//----------------------------------
 	vtkSmartPointer<vtkFloatArray> float_array = vtkFloatArray::SafeDownCast(arr);
 
-	int resolution = 20;
+	int resolution = 10;
 	int new_dims[3];
 	new_dims[0] = dims[0];
 	new_dims[1] = dims[1];
@@ -88,15 +88,18 @@ int main()
 	bd[5] = dat->GetBounds()[5];
 	regular_data->AllocateScalars(VTK_DOUBLE, 1);
 	ifstream myfile;
-	myfile.open(getDataPath("/data/sampling_height.txt").c_str());
+	myfile.open(getDataPath("/data/height2.txt").c_str());//For wa, adapt to height2.txt, for all others adapt to height.txt
 	string str;
 	std::vector<double> height;
-	for (int i = 0; i < 150; i++) {
+	int num_height_samples = 151; //For wa, adapt to 151. For all others adapt to 150. 
+	for (int i = 0; i < num_height_samples; i++) {
 		getline(myfile, str);
 		height.push_back(stod(str) * 0.0001);
 	}
-	double upper_height = height[0];
-	double lower_height = height[149];
+	//double upper_height = height[0];
+	double upper_height = 20808.89648*0.0001;
+	//double lower_height = height[height.size()-1];
+	double lower_height = 106.81226*0.00001;
 
 	regular_data->SetSpacing(dat->GetSpacing()[0], dat->GetSpacing()[1], -(upper_height - lower_height) / resolution);
 	regular_data->SetOrigin(dat->GetOrigin()[0], dat->GetOrigin()[1], dat->GetOrigin()[2]);
