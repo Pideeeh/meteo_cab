@@ -8,7 +8,7 @@
 #include "vtkCamera.h"
 #include "vtkSmartPointer.h"
 //new
-#include "vtkXMLImageDataReader.h" from 'C:\Users\annik\Documents\fs22\scientific visualization\vis22_prog\VTK-9.1.0\build\IO\XML\IOXML.dir\Release\vtkXMLImageDataReader.obj'
+#include "vtkXMLImageDataReader.h"
 #include <vtkImageData.h>
 #include <vtkPointData.h>
 #include <vtkCellData.h>
@@ -57,7 +57,7 @@ int main()
 	//----------------------------
 	// this is dataset specific
 	//---------------------------------
-	reader->SetFileName(getDataPath("/data/wa/wa_10.vti_scaled.vti").c_str());//adapt
+	reader->SetFileName(getDataPath("/data/pres/pres_10.vti_scaled.vti").c_str());//adapt
 	//--------------------------
 	reader->Update();
 	vtkSmartPointer<vtkImageData> dat = vtkSmartPointer<vtkImageData>::New();
@@ -67,11 +67,11 @@ int main()
 	//----------------------------
 	// this is dataset specific
 	//---------------------------------
-	vtkSmartPointer<vtkAbstractArray> arr = pts->GetAbstractArray("wa");//adapt for others
+	vtkSmartPointer<vtkAbstractArray> arr = pts->GetAbstractArray("pres");//adapt
 	//----------------------------------
 	vtkSmartPointer<vtkFloatArray> float_array = vtkFloatArray::SafeDownCast(arr);
 
-	int resolution = 10;
+	int resolution = 200; //adapt: choose how many samples along the z axis we want to have.
 	int new_dims[3];
 	new_dims[0] = dims[0];
 	new_dims[1] = dims[1];
@@ -88,18 +88,16 @@ int main()
 	bd[5] = dat->GetBounds()[5];
 	regular_data->AllocateScalars(VTK_DOUBLE, 1);
 	ifstream myfile;
-	myfile.open(getDataPath("/data/height2.txt").c_str());//For wa, adapt to height2.txt, for all others adapt to height.txt
+	myfile.open(getDataPath("/data/height.txt").c_str());//For wa, adapt to height2.txt. For all others, adapt to height.txt
 	string str;
 	std::vector<double> height;
-	int num_height_samples = 151; //For wa, adapt to 151. For all others adapt to 150. 
+	int num_height_samples = 150; //For wa, adapt to 151. For all others, adapt to 150. 
 	for (int i = 0; i < num_height_samples; i++) {
 		getline(myfile, str);
 		height.push_back(stod(str) * 0.0001);
 	}
-	//double upper_height = height[0];
-	double upper_height = 20808.89648*0.0001;
-	//double lower_height = height[height.size()-1];
-	double lower_height = 106.81226*0.00001;
+	double upper_height = 20808*0.0001;
+	double lower_height = 107*0.00001;
 
 	regular_data->SetSpacing(dat->GetSpacing()[0], dat->GetSpacing()[1], -(upper_height - lower_height) / resolution);
 	regular_data->SetOrigin(dat->GetOrigin()[0], dat->GetOrigin()[1], dat->GetOrigin()[2]);
