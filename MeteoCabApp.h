@@ -225,26 +225,20 @@ public:
         double height_min = baseHeight + 0;//initialization on values of our height data
         double height_max = baseHeight + 0.244379;
         double numColors = 20;
-        int elementsx = 1429;//how many x values on grid
-        int elementsy = 1556;//how many y
+        
+        // ----------------------------------------------------------------
+        // Create a triangulated mapper for mesh read from file, color it and link it to the lookup table
+        // ----------------------------------------------------------------
+        vtkNew<vtkOBJReader> reader;
+        reader->SetFileName(getDataPath("/data/downsampled_terrain.obj").c_str());
+        reader->Update();//read .obj file
+        heightmapDataMapper = vtkNew<vtkPolyDataMapper>();
+        heightmapDataMapper->SetInputConnection(reader->GetOutputPort());
+
         heightmapColors = vtkNew<vtkFloatArray>();
-        heightmapColors->SetNumberOfValues(elementsx * elementsy);
-        // ----------------------------------------------------------------
-        // read in text file with height data to decide on color
-        // ----------------------------------------------------------------
-        std::ifstream myfile(getDataPath("/data/height_values.txt"));
-        if (!myfile.is_open()) {
-            std::cout << "error opening file" << std::endl;
-            exit(EXIT_FAILURE);
-        }
-        for (unsigned int ix = 0; ix < elementsx; ix++) {
-            for (unsigned int iy = 0; iy < elementsy; iy++) {
-                std::string str;
-                std::getline(myfile, str);
-                double h = std::stod(str) * 0.0001;
-                // Height value color-coded
-                heightmapColors->SetValue(ix * elementsy + iy, baseHeight + h);
-            }
+        heightmapColors->SetNumberOfValues(229972);
+        for (int i = 0; i < 229972; i++) {//go over vertices
+            heightmapColors->SetValue(i, heightmapDataMapper->GetInput()->GetPoint(i)[2]+baseHeight);
         }
         // ----------------------------------------------------------------
         // Create a lookup table to share between the mapper and the scalar bar
@@ -254,7 +248,7 @@ public:
         heightmapLookupTable->SetNumberOfTableValues(numColors);
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
-            double val = height_min + ((double) i / numColors) * (height_max - height_min);
+            double val = height_min + ((double)i / numColors) * (height_max - height_min);
             getColorCorrespondingTovalue(val, r, g, b, height_max, height_min);
             heightmapLookupTable->SetTableValue(i, r, g, b);
         }
@@ -269,15 +263,7 @@ public:
         heightmapLegend->SetVerticalTitleSeparation(6);
         heightmapLegend->GetPositionCoordinate()->SetValue(0.85, 0.1);
         heightmapLegend->SetWidth(0.05);
-        // ----------------------------------------------------------------
-        // Create a triangulated mapper for mesh read from file, color it and link it to the lookup table
-        // ----------------------------------------------------------------
-        vtkNew<vtkOBJReader> reader;
-        reader->SetFileName(getDataPath("/data/downsampled_terrain.obj").c_str());
-        reader->Update();//read .obj file
 
-        heightmapDataMapper = vtkNew<vtkPolyDataMapper>();
-        heightmapDataMapper->SetInputConnection(reader->GetOutputPort());
         heightmapDataMapper->GetInput()->GetPointData()->SetScalars(
                 heightmapColors);//color it based on our computations
         heightmapDataMapper->SetLookupTable(heightmapLookupTable);//link lookup table

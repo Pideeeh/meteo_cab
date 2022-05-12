@@ -95,25 +95,25 @@ GetSlicewiseColorField(vtkImageData *input, std::vector<float> &localmins, std::
     }
 }
 
-void getColorCorrespondingTovalue(double val, double &r, double &g, double &b, double max, double min) {
+void getColorCorrespondingTovalue(double val, double& r, double& g, double& b, double max, double min) {
     double range = max - min;
     static const int numColorNodes = 9;
     double color[numColorNodes][3] =
-            {
-                    0, 0.7, 0, // green
-                    0, 0.6, 0.8,
-                    0, 0.4000, 0.6745,
-                    0, 0.5000, 0.7745,
-                    0, 0.5000, 0.8,
-                    0, 0.6000, 0.85,
-                    0, 0.6000, 0.9,
-                    0, 0.7000, 0.95,
-                    0, 0.7000, 1  // Blue
-            };
+    {
+            0.1, 0.5, 0.1, // green
+            0.1, 0.5, 0.5,
+            0.1, 0.5, 0.8,
+            0.2, 0.8, 1,  // Blue
+            0.3, 0.9, 1,
+            0.8, 0.95,1,
+            0.98,0.98,1,
+            1,1,1,
+            1,1,1//white
+    };
 
     for (int i = 0; i < (numColorNodes - 1); i++) {
-        double currFloor = min + ((double) i / (numColorNodes - 1)) * range;
-        double currCeil = min + ((double) (i + 1) / (numColorNodes - 1)) * range;
+        double currFloor = min + ((double)i / (numColorNodes - 1)) * range;
+        double currCeil = min + ((double)(i + 1) / (numColorNodes - 1)) * range;
 
         if ((val >= currFloor) && (val <= currCeil)) {
             double currFraction = (val - currFloor) / (currCeil - currFloor);
