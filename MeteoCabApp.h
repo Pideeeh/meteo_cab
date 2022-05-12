@@ -412,27 +412,21 @@ public:
         reader->SetFileName(getDataPath("/data/2d_wind_full.vti").c_str());
         reader->Update();
 
-        log(reader->GetOutput());
-
-        auto info = reader->GetOutput()->GetPointData()->GetArray("2d_velocity")->GetInformation();
+        horizontalWindDivergence = reader->GetOutput();
 
         vtkNew<vtkGradientFilter> gradientFilter;
         gradientFilter->SetInputConnection(0, reader->GetOutputPort());
-        gradientFilter->Compute
         gradientFilter->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, "2d_velocity");
         gradientFilter->ComputeDivergenceOn();
         gradientFilter->Update();
 
         auto div = gradientFilter->GetOutput();
         vtkImageData *input = vtkImageData::SafeDownCast(div);
-        log(input);
         input->GetPointData()->SetActiveScalars("Divergence");
-        log(input);
-
+        horizontalWindDivergence = input;
 
         horizontalWindDivergenceColors = vtkNew<vtkImageData>();
-        CreateGlobalColorImage(input, horizontalWindDivergenceColors);
-
+        CreateGlobalColorImage(horizontalWindDivergence, horizontalWindDivergenceColors);
 
         vtkNew<vtkPlane> plane;
         plane->SetOrigin(5, 49, 19998);
