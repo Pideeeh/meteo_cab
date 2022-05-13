@@ -230,15 +230,18 @@ public:
         // Create a triangulated mapper for mesh read from file, color it and link it to the lookup table
         // ----------------------------------------------------------------
         vtkNew<vtkOBJReader> reader;
-        reader->SetFileName(getDataPath("/data/downsampled_terrain.obj").c_str());
+        reader->SetFileName(getDataPath("/data/strong_boundaries.obj").c_str());
         reader->Update();//read .obj file
         heightmapDataMapper = vtkNew<vtkPolyDataMapper>();
         heightmapDataMapper->SetInputConnection(reader->GetOutputPort());
 
         heightmapColors = vtkNew<vtkFloatArray>();
-        heightmapColors->SetNumberOfValues(229972);
-        for (int i = 0; i < 229972; i++) {//go over vertices
+        heightmapColors->SetNumberOfValues(577290);
+        for (int i = 0; i < heightmapColors->GetNumberOfValues(); i++) {//go over vertices
             heightmapColors->SetValue(i, heightmapDataMapper->GetInput()->GetPoint(i)[2]+baseHeight);
+            if (heightmapDataMapper->GetInput()->GetPoint(i)[2] == 0) {//sea
+                heightmapColors->SetValue(i, NAN);
+            }
         }
         // ----------------------------------------------------------------
         // Create a lookup table to share between the mapper and the scalar bar
@@ -246,6 +249,7 @@ public:
         heightmapLookupTable = vtkNew<vtkLookupTable>();
         heightmapLookupTable->SetScaleToLinear();
         heightmapLookupTable->SetNumberOfTableValues(numColors);
+        heightmapLookupTable->SetNanColor(130. / 255, 167. / 255, 196. / 255, 1);//sea is blue but discrete cutoff
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
             double val = height_min + ((double)i / numColors) * (height_max - height_min);

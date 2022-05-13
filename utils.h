@@ -97,18 +97,16 @@ GetSlicewiseColorField(vtkImageData *input, std::vector<float> &localmins, std::
 
 void getColorCorrespondingTovalue(double val, double& r, double& g, double& b, double max, double min) {
     double range = max - min;
-    static const int numColorNodes = 9;
+    static const int numColorNodes = 7;
     double color[numColorNodes][3] =
     {
-            0.1, 0.5, 0.1, // green
-            0.1, 0.5, 0.5,
-            0.1, 0.5, 0.8,
-            0.2, 0.8, 1,  // Blue
-            0.3, 0.9, 1,
-            0.8, 0.95,1,
-            0.98,0.98,1,
-            1,1,1,
-            1,1,1//white
+           103. / 255,130. / 255,113. / 255,//green
+            137. / 255,166. / 255,148. / 255,//a bit lighter green
+            185. / 255, 180. / 255, 150. / 255,//brown
+            185. / 255 + 10. / 255, 180. / 255 + 10. / 255, 150. / 255 + 10. / 255,//lighter brown
+            185. / 255 + 30. / 255, 180. / 255 + 30. / 255, 150. / 255 + 30. / 255,//lighter brown
+            1,1,1,//white
+            1,1,1,//white
     };
 
     for (int i = 0; i < (numColorNodes - 1); i++) {
