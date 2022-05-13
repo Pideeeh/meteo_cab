@@ -238,7 +238,7 @@ public:
         heightmapColors = vtkNew<vtkFloatArray>();
         heightmapColors->SetNumberOfValues(577290);
         for (int i = 0; i < heightmapColors->GetNumberOfValues(); i++) {//go over vertices
-            heightmapColors->SetValue(i, heightmapDataMapper->GetInput()->GetPoint(i)[2]+baseHeight);
+            heightmapColors->SetValue(i, heightmapDataMapper->GetInput()->GetPoint(i)[2]);
             if (heightmapDataMapper->GetInput()->GetPoint(i)[2] == 0) {//sea
                 heightmapColors->SetValue(i, NAN);
             }
@@ -253,9 +253,10 @@ public:
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
             double val = height_min + ((double)i / numColors) * (height_max - height_min);
-            getColorCorrespondingTovalue(val, r, g, b, height_max, height_min);
+            getColorCorrespondingTovalue(val-baseHeight, r, g, b, height_max-baseHeight, height_min-baseHeight);
             heightmapLookupTable->SetTableValue(i, r, g, b);
         }
+        heightmapLookupTable->SetRange(height_min-baseHeight,height_max-baseHeight);
         heightmapLookupTable->Build();
         // ----------------------------------------------------------------
         // Create a scalar bar actor for the colormap
@@ -271,7 +272,7 @@ public:
         heightmapDataMapper->GetInput()->GetPointData()->SetScalars(
                 heightmapColors);//color it based on our computations
         heightmapDataMapper->SetLookupTable(heightmapLookupTable);//link lookup table
-        heightmapDataMapper->SetScalarRange(height_min, height_max);
+        heightmapDataMapper->SetScalarRange(height_min-baseHeight, height_max-baseHeight);
         // ----------------------------------------------------------------
         // Create an actor
         // ----------------------------------------------------------------
@@ -649,10 +650,10 @@ public:
         vtkRenderWindowInteractor *rwi = this->Interactor;
         string key = rwi->GetKeySym();
 
-        cout << "Key " << key << endl;
+        //cout << "Key " << key << endl;
 
         if (key == "1") {
-            cout << "Toggle Pressure" << endl;
+            //cout << "Toggle Pressure" << endl;
             TogglePressure();
         }
 
