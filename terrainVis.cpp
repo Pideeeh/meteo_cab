@@ -25,18 +25,17 @@ static const double numColors = 20;
 
 void getColorCorrespondingTovalue(double val, double &r, double &g, double &b) {
     double range = max - min;
-    static const int numColorNodes = 9;
+    static const int numColorNodes = 7;
     double color[numColorNodes][3] =
             {
-                    0.1, 0.5, 0.1, // green
-                    0.1, 0.5, 0.5,
-                    0.1, 0.5, 0.8,
-                    0.2, 0.8, 1,  // Blue
-                    0.3, 0.9, 1,
-                    0.8, 0.95,1,
-                    0.98,0.98,1,
-                    1,1,1,
-                    1,1,1//white
+                    103./255,130./255,113./255,//green
+                    137./255,166./255,148./255,//a bit lighter green
+                    166./255,182./255,155./255,//more brown-ish green
+                    185./255, 180./255, 150./255,//brown
+                    185./255+10./255, 180./255 + 10. / 255, 150./255 + 10. / 255,//lighter brown
+                    //197./255,200./255,176./255,//light brown
+                    1,1,1,//white
+                    1,1,1,//white
             };
 
     for (int i = 0; i < (numColorNodes - 1); i++) {
@@ -56,20 +55,27 @@ void getColorCorrespondingTovalue(double val, double &r, double &g, double &b) {
 int main(int, char *[]) {
     // Create a triangulated mapper for mesh read from file, color it based on height
     vtkNew<vtkOBJReader> reader;
-    reader->SetFileName(getDataPath("/data/downsampled_terrain.obj").c_str());
+    reader->SetFileName(getDataPath("/data/strong_boundaries.obj").c_str());
     reader->Update();//read .obj file
     vtkSmartPointer<vtkPolyDataMapper> triangulatedMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     triangulatedMapper->SetInputConnection(reader->GetOutputPort());//take mesh as input
     //color the mesh
     vtkSmartPointer<vtkFloatArray> colors = vtkSmartPointer<vtkFloatArray>::New();
-    colors->SetNumberOfValues(229972);
-    for (int i = 0; i < 229972; i++) {//go over vertices
+    colors->SetNumberOfValues(577290);
+    //colors->SetNumberOfValues(280551);
+    //colors->SetNumberOfValues(2223524);
+    //colors->SetNumberOfValues(229972);
+    for (int i = 0; i < colors->GetNumberOfValues(); i++) {//go over vertices
         colors->SetValue(i, triangulatedMapper->GetInput()->GetPoint(i)[2]);
+        if (colors->GetValue(i) == 0) {//sea
+            colors->SetValue(i, NAN);
+        }
     }
     vtkSmartPointer<vtkLookupTable> lookupTable = vtkSmartPointer<vtkLookupTable>::New();
     lookupTable->SetScaleToLinear();
     lookupTable->SetNumberOfTableValues(numColors);
     double r, g, b;
+    lookupTable->SetNanColor(130. / 255, 167. / 255, 196. / 255, 1);//sea is blue but discrete cutoff
     for (int i = 0; i < numColors; i++) {
         double val = min + ((double) i / numColors) * (max - min);
         getColorCorrespondingTovalue(val, r, g, b);
