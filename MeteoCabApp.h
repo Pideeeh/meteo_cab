@@ -636,9 +636,9 @@ public:
 
     void ToggleDivergence() {
         divergenceVisible = !divergenceVisible;
-        if (!divergenceVisible && pressureVisible) {
-            TogglePressure();
-        }
+        //if (!divergenceVisible && pressureVisible) {
+        //    TogglePressure();
+        //}
         UpdateDivergenceSlicer();
 
         horizontalWindDivergenceActor->SetVisibility(divergenceVisible);
@@ -653,7 +653,8 @@ public:
         //cout << "Key " << key << endl;
 
         if (key == "1") {
-            //cout << "Toggle Pressure" << endl;
+            divergenceVisible = true;
+            ToggleDivergence();//set divergence inactive
             TogglePressure();
         }
 
@@ -667,6 +668,8 @@ public:
             ToggleWindMode();
         }
         if (key == "5") {
+            pressureVisible = true;
+            TogglePressure();//set pressure inactive
             ToggleDivergence();
         }
         if (pressureVisible) {
