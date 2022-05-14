@@ -36,6 +36,86 @@
 #include "vtkActor2D.h"
 #include <vtkCharArray.h>
 #include <vtkImageGaussianSmooth.h>
+#include <vtkLine.h>
+#include <vtkCellArray.h>
+#include <vtkUnsignedCharArray.h>
+#include <vtkCellData.h>
+
+
+//FROM ANNIKA AND FRAWA TO DAVIDE
+void interpolate_velocity(vtkSmartPointer<vtkImageData>& data, double x_location, double y_location, double& u, double& v) {
+    double bounds[6];
+    data->GetBounds(bounds);
+    int dims[3];
+    data->GetDimensions(dims);
+
+    x_location = std::min(bounds[1], std::max(x_location, bounds[0]));
+    y_location = std::min(bounds[3], std::max(y_location, bounds[2]));
+
+
+    double between_index_x = (x_location - bounds[0]) / (bounds[1] - bounds[0]) * (dims[0] - 1);
+    double between_index_y = (y_location - bounds[2]) / (bounds[3] - bounds[2]) * (dims[1] - 1);
+
+    int lower_index_x = (int)std::floor(between_index_x);
+    int upper_index_x = (int)std::ceil(between_index_x);
+    int lower_index_y = (int)std::floor(between_index_y);
+    int upper_index_y = (int)std::ceil(between_index_y);
+
+    float* vector_low_low = static_cast<float*>(data->GetScalarPointer(lower_index_x, lower_index_y, 0));
+    float* vector_low_upper = static_cast<float*>(data->GetScalarPointer(lower_index_x, upper_index_y, 0));
+    float* vector_upper_low = static_cast<float*>(data->GetScalarPointer(upper_index_x, lower_index_y, 0));
+    float* vector_upper_upper = static_cast<float*>(data->GetScalarPointer(upper_index_x, upper_index_y, 0));
+
+    double t_x = between_index_x - (double)lower_index_x; //influence of upper for x
+    double t_y = between_index_y - (double)lower_index_y; //influence of upper for x
+
+    u = t_x * t_y * vector_upper_upper[0] + t_x * (1.0 - t_y) * vector_upper_low[0] + (1.0 - t_x) * t_y * vector_low_upper[0] + (1.0 - t_x) * (1.0 - t_y) * vector_low_low[0];
+    v = t_x * t_y * vector_upper_upper[1] + t_x * (1.0 - t_y) * vector_upper_low[1] + (1.0 - t_x) * t_y * vector_low_upper[1] + (1.0 - t_x) * (1.0 - t_y) * vector_low_low[1];
+}
+
+
+//FROM ANNIKA AND FRAWA TO DAVIDE
+void runge_kutta_step(vtkSmartPointer<vtkImageData>& data, double x_i, double y_i, double s, double& x_i1, double& y_i1) {
+    double bounds[6];
+    data->GetBounds(bounds);
+
+    double x_v1, y_v1, x_v2, y_v2, x_v3, y_v3, x_v4, y_v4;
+
+    interpolate_velocity(data, x_i, y_i, x_v1, y_v1);
+    double length = std::sqrt(x_v1 * x_v1 + y_v1 * y_v1);
+    x_v1 /= length;
+    y_v1 /= length;
+    interpolate_velocity(data, x_i + s / 2.0 * x_v1, y_i + s / 2.0 * y_v1, x_v2, y_v2);
+    length = std::sqrt(x_v2 * x_v2 + y_v2 * y_v2);
+    x_v2 /= length;
+    y_v2 /= length;
+    interpolate_velocity(data, x_i + s / 2.0 * x_v2, y_i + s / 2.0 * y_v2, x_v3, y_v3);
+    length = std::sqrt(x_v3 * x_v3 + y_v3 * y_v3);
+    x_v3 /= length;
+    y_v3 /= length;
+    interpolate_velocity(data, x_i + s * x_v3, y_i + s * y_v3, x_v4, y_v4);
+    length = std::sqrt(x_v4 * x_v4 + y_v4 * y_v4);
+    x_v4 /= length;
+    y_v4 /= length;
+    double step_x = (x_v1 / 6.0 + x_v2 / 3.0 + x_v3 / 3.0 + x_v4 / 6.0);
+    double step_y = (y_v1 / 6.0 + y_v2 / 3.0 + y_v3 / 3.0 + y_v4 / 6.0);
+    length = std::sqrt(step_x * step_x + step_y * step_y);
+    //length = 1.0;
+    x_i1 = x_i + s * step_x / length;
+    y_i1 = y_i + s * step_y / length;
+
+    x_i1 = std::min(bounds[1], std::max(x_i1, bounds[0]));
+    y_i1 = std::min(bounds[3], std::max(y_i1, bounds[2]));
+
+    /*double x_v1, y_v1, x_v2, y_v2, x_v3, y_v3, x_v4, y_v4;
+    interpolate_velocity(data, x_i, y_i, x_v1, y_v1);
+    double length = std::sqrt(x_v1 * x_v1 + y_v1 * y_v1);
+    x_v1 /= length;
+    y_v1 /= length;
+    x_i1 = x_i + s * x_v1;
+    y_i1 = y_i + s * y_v1;*/
+}
+
 
 void create_noisy_img(int h_res, int v_res, vtkSmartPointer<vtkImageData> image) {
     vtkNew<vtkCharArray> colors;
@@ -67,27 +147,50 @@ void create_noisy_img(int h_res, int v_res, vtkSmartPointer<vtkImageData> image)
     }
     image->Modified();
 }
+
 void compute_one_streamline(vtkSmartPointer<vtkImageData> v, double *point, vtkSmartPointer<vtkPolyData> result) {
 
-    // Allocate one seed
-    vtkNew<vtkPolyData> seeds_LIC;
-    vtkNew<vtkPoints> one_seed;
-    one_seed->InsertNextPoint(point);
-    seeds_LIC->SetPoints(one_seed);
+    //// Allocate one seed
+    //vtkNew<vtkPolyData> seeds_LIC;
+    //vtkNew<vtkPoints> one_seed;
+    //one_seed->InsertNextPoint(point);
+    //seeds_LIC->SetPoints(one_seed);
 
-    // Compute streamline
-    vtkNew<vtkStreamTracer> tracer_LIC;
-    tracer_LIC->SetInputData(v);
-    tracer_LIC->SetSourceData(seeds_LIC);
-    tracer_LIC->SetMaximumPropagation(1);
-    tracer_LIC->SetIntegratorTypeToRungeKutta45();
-    tracer_LIC->SetInitialIntegrationStep(0.01);
-    tracer_LIC->SetIntegrationDirectionToBoth();
-    tracer_LIC->Update();
+    //// Compute streamline
+    //vtkNew<vtkStreamTracer> tracer_LIC;
+    //tracer_LIC->SetInputData(v);
+    //tracer_LIC->SetSourceData(seeds_LIC);
+    //tracer_LIC->SetMaximumPropagation(1);
+    //tracer_LIC->SetIntegratorTypeToRungeKutta45();
+    //tracer_LIC->SetInitialIntegrationStep(0.01);
+    //tracer_LIC->SetIntegrationDirectionToForward(); // TODO: should be to both for LIC texture
+    //tracer_LIC->Update();
 
-    // return streamline points
-    vtkSmartPointer<vtkPoints> points = tracer_LIC->GetOutput()->GetPoints();
-    result->SetPoints(points);
+    //// return streamline points
+    //vtkSmartPointer<vtkPoints> points = tracer_LIC->GetOutput()->GetPoints();
+    //result->SetPoints(points);
+
+    vtkNew<vtkPoints> line_points;
+    int n_steps = 1000;
+    double s = 0.001;
+    
+    point[2] = 0.3;
+
+    double old_point[3];
+    old_point[0] = point[0];
+    old_point[1] = point[1];
+    old_point[2] = 0.3;
+
+    for (int i = 0; i < n_steps; i++) {
+        double new_point[3];
+        runge_kutta_step(v, old_point[0], old_point[1], s, new_point[0], new_point[1]);
+        new_point[2] = 0.3;
+        line_points->InsertNextPoint(new_point);
+
+        old_point[0] = new_point[0];
+        old_point[1] = new_point[1];
+    }
+    result->SetPoints(line_points);
 }
 
 void weighted_color(vtkSmartPointer<vtkPolyData> polyData, vtkSmartPointer<vtkImageData> noisy_image, double *bounds, int *dims, double *range, unsigned char *color) {
@@ -126,23 +229,24 @@ void weighted_color(vtkSmartPointer<vtkPolyData> polyData, vtkSmartPointer<vtkIm
         }
 }
 
-void normalize_vecotrs(vtkSmartPointer<vtkImageData> data) {
-    int dims[3];
-    data->GetDimensions(dims);
+//void normalize_vecotrs(vtkSmartPointer<vtkImageData> data) {
+//    int dims[3];
+//    data->GetDimensions(dims);
+//
+//    for (auto z = 0; z < dims[2]; z++) { // z = 0 always
+//        for (auto y = 0; y < dims[1]; y++) {
+//            for (auto x = 0; x < dims[0]; x++) {
+//                // int idx = z * dims[0] * dims[1] + y * dims[0] + x;
+//                auto vector = static_cast<float*>(data->GetScalarPointer(x, y, z));
+//                double norm = sqrt(vector[0] * vector[0] + vector[1] * vector[1]); // 2d vector
+//                vector[0] = vector[0] / norm;
+//                vector[1] = vector[1] / norm;
+//                vector[2] = 0;
+//            }
+//        }
+//    }
+//}
 
-    for (auto z = 0; z < dims[2]; z++) {
-        for (auto y = 0; y < dims[1]; y++) {
-            for (auto x = 0; x < dims[0]; x++) {
-                int idx = z * dims[0] * dims[1] + y * dims[0] + x;
-                auto vector = static_cast<float*>(data->GetScalarPointer(x, y, z));
-                double norm = sqrt(vector[0] * vector[0] + vector[1] * vector[1]); // 2d vector
-                vector[0] = vector[0] / norm;
-                vector[1] = vector[1] / norm;
-                vector[2] = 0;
-            }
-        }
-    }
-}
 void set_texture_color(vtkSmartPointer<vtkImageData> image, vtkSmartPointer<vtkPolyData> polyData, double* bounds, int* dims, double* range, unsigned char *color) {
     polyData->GetNumberOfPoints();
     vtkSmartPointer<vtkPoints> points = polyData->GetPoints();
@@ -161,6 +265,36 @@ void set_texture_color(vtkSmartPointer<vtkImageData> image, vtkSmartPointer<vtkP
         }
     }
     image->Modified();
+}
+
+// Turn result of streamtraces (vtkPoints) into lines (which can be visualized with PolyDataMapper).
+void from_points_to_line(
+    vtkSmartPointer<vtkPoints> line_points, 
+    vtkSmartPointer<vtkPoints> all_points, 
+    vtkSmartPointer<vtkCellArray> all_lines,
+    vtkSmartPointer< vtkUnsignedCharArray> all_colors
+) {
+    int n_points = line_points->GetNumberOfPoints();
+    int offset = all_points->GetNumberOfPoints();
+
+    vtkNew<vtkNamedColors> colors;
+
+    for (int i = 0; i < n_points-1; i++) {
+        // create a segment between each set of point
+        double *point = line_points->GetPoint(i);
+        vtkSmartPointer<vtkLine> line = vtkSmartPointer<vtkLine>::New();
+        line->GetPointIds()->SetId(0, offset + i);
+        line->GetPointIds()->SetId(1, offset + i + 1);
+        
+        // update set of all points, colors, and lines
+        all_points->InsertNextPoint(point);
+        all_lines->InsertNextCell(line);
+        all_colors->InsertNextTuple(colors->GetColor3d("Blue").GetData());
+    }
+
+    // Add the last point to the array
+    double* point = line_points->GetPoint(n_points-1);
+    all_points->InsertNextPoint(point);
 }
 
 int main(int, char* []) {
@@ -196,10 +330,10 @@ int main(int, char* []) {
     // ----------------------------------------------------------------
     auto mask = vtkSmartPointer<vtkMaskPoints>::New();
     mask->SetInputData(v);
-    mask->RandomModeOn();
-    mask->SetRandomModeType(2);
-    mask->SetMaximumNumberOfPoints(1000);
-    mask->SetOnRatio(50);
+    //mask->RandomModeOn();
+    //mask->SetRandomModeType(2);
+    //mask->SetMaximumNumberOfPoints();
+    //mask->SetOnRatio(50);
     mask->Update();
 
     // ----------------------------------------------------------------
@@ -264,20 +398,38 @@ int main(int, char* []) {
     // ----------------------------------------------------------------
     // Setup streamlines and integrator
     // ----------------------------------------------------------------
-    vtkSmartPointer<vtkStreamTracer> tracer = vtkSmartPointer<vtkStreamTracer>::New();
+
+    /*vtkSmartPointer<vtkStreamTracer> tracer = vtkSmartPointer<vtkStreamTracer>::New();
     tracer->SetInputData(v);
     tracer->SetSourceData(seeds);
     tracer->SetMaximumPropagation(0.5);
     tracer->SetIntegratorTypeToRungeKutta45();
     tracer->SetInitialIntegrationStep(0.0000000001);
     tracer->SetIntegrationDirectionToBoth();
-    tracer->Update();
+    tracer->Update();*/
+    
+    // ----------------------------------------------------------------
+    // TODO: test code for new streamlines visualization
+    vtkNew<vtkPolyData> test1;
+    vtkNew<vtkPoints> all_points;
+    vtkNew<vtkCellArray> all_lines;
+    vtkNew<vtkUnsignedCharArray> all_colors;
+    all_colors->SetNumberOfComponents(3);
 
+    for (int i = 0; i < seeds->GetNumberOfPoints(); i++) {
+        compute_one_streamline(v, seeds->GetPoint(i), test1);
+        from_points_to_line(test1->GetPoints(), all_points, all_lines, all_colors);
+    }
+    test1->SetPoints(all_points);
+    test1->SetLines(all_lines);
+    test1->GetCellData()->SetScalars(all_colors);
+    // ----------------------------------------------------------------
     vtkNew<vtkPolyDataMapper> lines_mapper;
-    lines_mapper->SetInputConnection(tracer->GetOutputPort());
+    lines_mapper->SetInputData(test1);
     vtkNew<vtkActor> streamlines_actor;
     streamlines_actor->SetMapper(lines_mapper);
     streamlines_actor->VisibilityOn();
+    streamlines_actor->GetProperty()->SetLineWidth(1.2);
 
     // ----------------------------------------------------------------
     // ----------------------------------------------------------------
@@ -333,7 +485,7 @@ int main(int, char* []) {
     //v->GetPointData()->SetActiveScalars("2d_velocity");
     //normalize_vecotrs(v);
     //v->GetPointData()->SetActiveVectors("2d_velocity");
-    for(int i=0; i<iterations; i++){
+    for(int i=0; i<0; i++){
 
         // Compute streamline
         double *point = array_seeds_LIC->GetPoint(i);
@@ -366,9 +518,9 @@ int main(int, char* []) {
     // ----------------------------------------------------------------
     vtkNew<vtkRenderer> renderer;
     renderer->SetBackground(colors->GetColor3d("White").GetData());
-    //renderer->AddActor(vectors_actor);
-    //renderer->AddActor(streamlines_actor);
-    renderer->AddActor(image_actor);
+    renderer->AddActor(vectors_actor);
+    renderer->AddActor(streamlines_actor);
+    //renderer->AddActor(image_actor);
 
     vtkNew<vtkRenderWindow> renderWindow;
     renderWindow->AddRenderer(renderer);
