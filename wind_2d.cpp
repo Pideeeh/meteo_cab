@@ -13,7 +13,7 @@
 #include <vtkGlyphSource2D.h>
 #include <vtkMaskPoints.h>
 #include <vtkXMLPolyDataReader.h>
-
+#include <vtkDoubleArray.h>
 #include <vtkFloatArray.h>
 #include <vtkStreamTracer.h>
 #include <vtkPolyDataPointSampler.h> 
@@ -79,6 +79,17 @@ void runge_kutta_step(vtkSmartPointer<vtkImageData>& data, double x_i, double y_
     double bounds[6];
     data->GetBounds(bounds);
 
+    if (std::min(bounds[1], std::max(x_i1, bounds[0])) != x_i) {
+        x_i1 = x_i;
+        y_i1 = y_i;
+        return;
+    }
+    if (std::min(bounds[3], std::max(y_i1, bounds[2])) != y_i) {
+        x_i1 = x_i;
+        y_i1 = y_i;
+        return;
+    }
+
     double x_v1, y_v1, x_v2, y_v2, x_v3, y_v3, x_v4, y_v4;
 
     interpolate_velocity(data, x_i, y_i, x_v1, y_v1);
@@ -103,17 +114,6 @@ void runge_kutta_step(vtkSmartPointer<vtkImageData>& data, double x_i, double y_
     //length = 1.0;
     x_i1 = x_i + s * step_x / length;
     y_i1 = y_i + s * step_y / length;
-
-    x_i1 = std::min(bounds[1], std::max(x_i1, bounds[0]));
-    y_i1 = std::min(bounds[3], std::max(y_i1, bounds[2]));
-
-    /*double x_v1, y_v1, x_v2, y_v2, x_v3, y_v3, x_v4, y_v4;
-    interpolate_velocity(data, x_i, y_i, x_v1, y_v1);
-    double length = std::sqrt(x_v1 * x_v1 + y_v1 * y_v1);
-    x_v1 /= length;
-    y_v1 /= length;
-    x_i1 = x_i + s * x_v1;
-    y_i1 = y_i + s * y_v1;*/
 }
 
 
@@ -172,7 +172,7 @@ void compute_one_streamline(vtkSmartPointer<vtkImageData> v, double *point, vtkS
 
     vtkNew<vtkPoints> line_points;
     int n_steps = 1000;
-    double s = 0.001;
+    double s = 0.01;
     
     point[2] = 0.3;
 
@@ -330,10 +330,10 @@ int main(int, char* []) {
     // ----------------------------------------------------------------
     auto mask = vtkSmartPointer<vtkMaskPoints>::New();
     mask->SetInputData(v);
-    //mask->RandomModeOn();
-    //mask->SetRandomModeType(2);
-    //mask->SetMaximumNumberOfPoints();
-    //mask->SetOnRatio(50);
+    mask->RandomModeOn();
+    mask->SetRandomModeType(2);
+    mask->SetMaximumNumberOfPoints(1000);
+    mask->SetOnRatio(50);
     mask->Update();
 
     // ----------------------------------------------------------------
@@ -408,6 +408,22 @@ int main(int, char* []) {
     tracer->SetIntegrationDirectionToBoth();
     tracer->Update();*/
     
+    vtkDataArray* vectors = v->GetPointData()->GetVectors();
+    v->GetPointData()->SetActiveScalars("2d_velocity");
+    int dim[3];
+    v->GetDimensions(dim);
+    for (int x = 0; x < dim[0]; x++) {
+        for (int y = 0; y < dim[1]; y++) {
+            auto pixel = static_cast<float*>(v->GetScalarPointer(x, y, 0));
+            auto kd=vectors->GetTuple(x+y*dim[0]);
+            pixel[0] = kd[0];
+            pixel[1] = kd[1];
+            pixel[2] = 0.0;
+        }
+    }
+
+
+
     // ----------------------------------------------------------------
     // TODO: test code for new streamlines visualization
     vtkNew<vtkPolyData> test1;
