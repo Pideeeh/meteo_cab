@@ -95,23 +95,23 @@ GetSlicewiseColorField(vtkImageData *input, std::vector<float> &localmins, std::
     }
 }
 
-void getColorCorrespondingTovalue(double val, double& r, double& g, double& b, double max, double min) {
+void getColorCorrespondingTovalue(double val, double &r, double &g, double &b, double max, double min) {
     double range = max - min;
     static const int numColorNodes = 7;
     double color[numColorNodes][3] =
-    {
-           103. / 255,130. / 255,113. / 255,//green
-            137. / 255,166. / 255,148. / 255,//a bit lighter green
-            185. / 255, 180. / 255, 150. / 255,//brown
-            185. / 255 + 10. / 255, 180. / 255 + 10. / 255, 150. / 255 + 10. / 255,//lighter brown
-            185. / 255 + 30. / 255, 180. / 255 + 30. / 255, 150. / 255 + 30. / 255,//lighter brown
-            1,1,1,//white
-            1,1,1,//white
-    };
+            {
+                    103. / 255, 130. / 255, 113. / 255,//green
+                    137. / 255, 166. / 255, 148. / 255,//a bit lighter green
+                    185. / 255, 180. / 255, 150. / 255,//brown
+                    185. / 255 + 10. / 255, 180. / 255 + 10. / 255, 150. / 255 + 10. / 255,//lighter brown
+                    185. / 255 + 30. / 255, 180. / 255 + 30. / 255, 150. / 255 + 30. / 255,//lighter brown
+                    1, 1, 1,//white
+                    1, 1, 1,//white
+            };
 
     for (int i = 0; i < (numColorNodes - 1); i++) {
-        double currFloor = min + ((double)i / (numColorNodes - 1)) * range;
-        double currCeil = min + ((double)(i + 1) / (numColorNodes - 1)) * range;
+        double currFloor = min + ((double) i / (numColorNodes - 1)) * range;
+        double currCeil = min + ((double) (i + 1) / (numColorNodes - 1)) * range;
 
         if ((val >= currFloor) && (val <= currCeil)) {
             double currFraction = (val - currFloor) / (currCeil - currFloor);
@@ -170,5 +170,31 @@ void CreateGlobalColorImage(vtkImageData *input, vtkImageData *image) {
     }
 }
 
+vtkSmartPointer<vtkPiecewiseFunction>
+GetDivergenceOpacityFunction(double minValue, double maxValue, double alpha, double transparentFrom,
+                             double transparentTo) {
+    vtkSmartPointer<vtkPiecewiseFunction> opacity = vtkNew<vtkPiecewiseFunction>();
+    opacity->AddPoint(-100, alpha);
+    opacity->AddPoint(100, alpha);
+    opacity->AddPoint(transparentFrom, alpha);
+    opacity->AddPoint(transparentFrom + 0.01, 0);
+    opacity->AddPoint(transparentTo, alpha);
+    opacity->AddPoint(transparentTo - 0.01, 0);
+    return opacity;
+}
+
+
+vtkSmartPointer<vtkColorTransferFunction>
+GetDivergenceColorFunction(double minValue, double maxValue) {
+    vtkSmartPointer<vtkColorTransferFunction> ctf = vtkNew<vtkColorTransferFunction>();
+
+    ctf->AddRGBPoint(minValue,1,0,0);
+    ctf->AddRGBPoint(-1,1,0,0);
+
+    ctf->AddRGBPoint(1,0,0,1);
+    ctf->AddRGBPoint(maxValue,0,0,1);
+
+    return ctf;
+}
 
 #endif //VIS2021_UTILS_H

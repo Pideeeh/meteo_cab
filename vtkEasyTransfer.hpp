@@ -125,6 +125,28 @@ public:
         }
     }
 
+    void SetCloudOpacityRangeWithCap(double minValue, double maxValue, double zeroUntil, double zeroFrom , double alpha) {
+        double range[2] = {mOpacityTransferFunction->GetRange()[0], mOpacityTransferFunction->GetRange()[1]};
+        double *dataPtr = mOpacityTransferFunction->GetDataPointer();
+        int size = mOpacityTransferFunction->GetSize();
+
+        cout << size << endl;
+
+        std::vector<double> data(dataPtr, dataPtr + (2 * size));
+        mOpacityTransferFunction->RemoveAllPoints();
+        for (int i = 0; i < size; ++i) {
+
+            double told = (data[i * 2] - range[0]) / (range[1] - range[0]);
+            double tnew = told * (maxValue - minValue) + minValue;
+            if(tnew > zeroUntil && tnew < zeroFrom)
+            if (i < zeroUntil || i > zeroFrom) {
+                mOpacityTransferFunction->AddPoint(tnew, 0);
+                continue;
+            }
+            mOpacityTransferFunction->AddPoint(tnew, alpha);
+        }
+    }
+
 
     // Gets the color transfer function.
     vtkSmartPointer<vtkColorTransferFunction> GetColorTransferFunction() { return mColorTransferFunction; }
