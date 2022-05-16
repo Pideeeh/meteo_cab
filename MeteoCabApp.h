@@ -98,6 +98,7 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
 
     vtkSmartPointer<vtkVolume> divergenceActor;
     vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> divergenceRaycastMapper;
+    vtkSmartPointer<vtkScalarBarActor> divLegend;
 
     vtkSmartPointer<vtkActor> horizontalWindVectorActor;
     vtkSmartPointer<vtkImageData> horizontalWindData;
@@ -145,6 +146,7 @@ public:
         renderer->AddActor(cloudActor);
         renderer->AddActor(divergenceActor);
         renderer->AddActor2D(heightmapLegend);
+        renderer->AddActor2D(divLegend);
         renderer->AddActor(horizontalWindVectorActor);
         renderer->SetBackground(0.7, 0.7, 0.7);
         interactor->SetInteractorStyle(this);
@@ -453,11 +455,37 @@ public:
         volumeProperty->SetColor(colorFunction);
         volumeProperty->SetScalarOpacity(opacityFunction);
 
+        // ----------------------------------------------------------------
+       // Create a lookup table to share between the mapper and the scalar bar
+       // ----------------------------------------------------------------
+        vtkNew<vtkLookupTable> divLookupTable = vtkNew<vtkLookupTable>();
+        divLookupTable->SetScaleToLinear();
+        divLookupTable->SetNumberOfTableValues(20);
+        for (int i = 0; i < divLookupTable->GetNumberOfTableValues(); i++) {
+            double val = range[0] + ((double)i / divLookupTable->GetNumberOfTableValues()) * (range[1] - range[0]);
+            double* col=colorFunction->GetColor(val);
+            double op = opacityFunction->GetValue(val);
+            divLookupTable->SetTableValue(i, col[0], col[1], col[2],op);
+        }
+        divLookupTable->SetRange(range[0],range[1]);
+        divLookupTable->Build();
+        divLegend = vtkNew<vtkScalarBarActor>();
+        divLegend->SetLookupTable(divLookupTable);
+        divLegend->SetNumberOfLabels(3);
+        divLegend->SetTitle("divergence");
+        divLegend->SetVerticalTitleSeparation(6);
+        divLegend->GetPositionCoordinate()->SetValue(0.93, 0.1);
+        divLegend->SetWidth(0.05);
+
+        //divergenceRaycastMapper->SetLookupTable(divLookupTable);//link lookup table
+        //divergenceRaycastMapper->SetScalarRange(range[0], range[1]);
+
         // create volume actor and assign mapper and properties
         divergenceActor = vtkNew<vtkVolume>();
         divergenceActor->SetMapper(divergenceRaycastMapper);
         divergenceActor->SetProperty(volumeProperty);
         divergenceActor->SetVisibility(divergenceVisible);
+        divLegend->SetVisibility(divergenceVisible);
     }
 
     void Launch() {
@@ -655,6 +683,7 @@ public:
     void ToggleDivergence() {
         divergenceVisible = !divergenceVisible;
         divergenceActor->SetVisibility(divergenceVisible);
+        divLegend->SetVisibility(divergenceVisible);
     }
 
     void OnKeyPress() override {
