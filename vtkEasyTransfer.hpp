@@ -104,7 +104,7 @@ public:
     }
 
     // Sets the opacity map range
-    void SetCloudOpacityRange(double minValue, double maxValue, int zeroUntil, int zeroFrom , double alpha) {
+    void SetCloudOpacityRange(double minValue, double maxValue, int zeroUntil, int zeroFrom, double alpha) {
         double range[2] = {mOpacityTransferFunction->GetRange()[0], mOpacityTransferFunction->GetRange()[1]};
         double *dataPtr = mOpacityTransferFunction->GetDataPointer();
         int size = mOpacityTransferFunction->GetSize();
@@ -119,13 +119,13 @@ public:
             double tnew = told * (maxValue - minValue) + minValue;
             if (i < zeroUntil || i > zeroFrom) {
                 mOpacityTransferFunction->AddPoint(tnew, 0);
-                continue;
-            }
-            mOpacityTransferFunction->AddPoint(tnew, alpha);
+            } else
+                mOpacityTransferFunction->AddPoint(tnew, alpha);
         }
     }
 
-    void SetCloudOpacityRangeWithCap(double minValue, double maxValue, double zeroUntil, double zeroFrom , double alpha) {
+    void
+    SetCloudOpacityRangeWithCap(double minValue, double maxValue, double zeroUntil, double zeroFrom, double alpha) {
         double range[2] = {mOpacityTransferFunction->GetRange()[0], mOpacityTransferFunction->GetRange()[1]};
         double *dataPtr = mOpacityTransferFunction->GetDataPointer();
         int size = mOpacityTransferFunction->GetSize();
@@ -138,11 +138,11 @@ public:
 
             double told = (data[i * 2] - range[0]) / (range[1] - range[0]);
             double tnew = told * (maxValue - minValue) + minValue;
-            if(tnew > zeroUntil && tnew < zeroFrom)
-            if (i < zeroUntil || i > zeroFrom) {
-                mOpacityTransferFunction->AddPoint(tnew, 0);
-                continue;
-            }
+            if (tnew > zeroUntil && tnew < zeroFrom)
+                if (i < zeroUntil || i > zeroFrom) {
+                    mOpacityTransferFunction->AddPoint(tnew, 0);
+                    continue;
+                }
             mOpacityTransferFunction->AddPoint(tnew, alpha);
         }
     }

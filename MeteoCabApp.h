@@ -28,6 +28,7 @@
 #include "vtkProperty.h"
 #include "vtkOBJReader.h"
 #include "vtkPlaneWidget.h"
+#include "vtkCellData.h"
 #include "vtkFloatArray.h"
 #include "vtkMetaImageReader.h"
 #include "vtkVolumeProperty.h"
@@ -43,6 +44,7 @@
 #include "dataSetDefinitions.h"
 #include "PlaneWidgetInteraction.h"
 #include "BetterVtkSlicer.h"
+#include "streamline_functions.h"
 
 using namespace std;
 
@@ -102,14 +104,18 @@ class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
 
     vtkSmartPointer<vtkActor> horizontalWindVectorActor;
     vtkSmartPointer<vtkImageData> horizontalWindData;
+    vtkSmartPointer<vtkImageData> streamlinesData;
     vtkSmartPointer<BetterVtkSlicer> horizontalWindSlicer;
     vtkSmartPointer<vtkPolyDataMapper> windMapper;
     vtkSmartPointer<vtkGlyph2D> windGlyphs;
     vtkSmartPointer<vtkGlyphSource2D> windGlyphSource;
     vtkSmartPointer<vtkMaskPoints> windMask;
-    /*
-     * Rendering Variables
-     * */
+
+    vtkSmartPointer<vtkPolyDataMapper> streamlinesMapper;
+    vtkSmartPointer<vtkActor> streamlinesActor;
+/*
+ * Rendering Variables
+ * */
     vtkSmartPointer<vtkRenderer> renderer;
     vtkSmartPointer<vtkRenderWindow> renderWindow;
     vtkSmartPointer<vtkRenderWindowInteractor> interactor;
@@ -162,6 +168,7 @@ public:
         renderer->AddActor2D(heightmapLegend);
         renderer->AddActor2D(divLegend);
         renderer->AddActor(horizontalWindVectorActor);
+        renderer->AddActor(streamlinesActor);
         renderer->SetBackground(0.7, 0.7, 0.7);
         interactor->SetInteractorStyle(this);
         renderWindow->SetSize(500, 500);
@@ -362,7 +369,7 @@ public:
         windGlyphs->SetSourceConnection(windGlyphSource->GetOutputPort());
         windGlyphs->OrientOn();
         windGlyphs->SetScaleModeToScaleByVector();
-        windGlyphs->SetScaleFactor(0.04);
+        windGlyphs->SetScaleFactor(0.02);
         windGlyphs->Update();
 
         windMapper = vtkNew<vtkPolyDataMapper>();
@@ -376,6 +383,92 @@ public:
         horizontalWindVectorActor->GetPosition(position);
         position[2] = horizontalWindData->GetBounds()[4];
         horizontalWindVectorActor->SetPosition(position);
+
+
+        streamlinesData = vtkNew<vtkImageData>();
+        streamlinesData->DeepCopy(horizontalWindData);
+        UpdateStreamlines(0);
+
+    }
+
+    void UpdateStreamlines(int streamSlice) {
+        if(streamSlice == 0)
+            streamSlice = 1;
+        streamlinesData->GetPointData()->SetActiveScalars("2d_velocity");
+
+        double spacing[3];
+        double origin[3];
+        streamlinesData->GetSpacing(spacing);
+        streamlinesData->GetOrigin(origin);
+
+        double sliceHeight = streamSlice * spacing[2] + origin[2];
+
+        double N = 15;
+        double bounds[6];
+        streamlinesData->GetBounds(bounds);
+        double range[3];
+        for (int i = 0; i < 3; ++i) range[i] = bounds[2 * i + 1] - bounds[2 * i];
+
+        vtkNew<vtkPoints> array_seeds;
+        for (int y = 0; y <= N; y++) {
+            for (int x = 0; x <= N; x++) {
+                array_seeds->InsertNextPoint(
+                        bounds[0] + (x / N) * (range[0]),
+                        bounds[2] + (y / N) * (range[1]),
+                        sliceHeight);
+            }
+        }
+
+        vtkSmartPointer<vtkPolyData> seeds = vtkSmartPointer<vtkPolyData>::New();
+        seeds->SetPoints(array_seeds);
+
+
+        vtkDataArray *vectors = streamlinesData->GetPointData()->GetVectors();
+        streamlinesData->GetPointData()->SetActiveScalars("2d_velocity");
+        int dim[3];
+        streamlinesData->GetDimensions(dim);
+        int z = streamSlice;
+        for (int x = 0; x < dim[0]; x++) {
+            for (int y = 0; y < dim[1]; y++) {
+                auto pixel = static_cast<float *>(streamlinesData->GetScalarPointer(x, y, 0));
+                auto kd = vectors->GetTuple(x + y * dim[0] + z * dim[0] * dim[1]);
+                pixel[0] = kd[0];
+                pixel[1] = kd[1];
+                pixel[2] = 0.0;
+            }
+        }
+
+
+
+        // ----------------------------------------------------------------
+        // TODO: test code for new streamlines visualization
+        vtkNew<vtkPolyData> test1;
+        vtkNew<vtkPoints> all_points;
+        vtkNew<vtkCellArray> all_lines;
+        vtkNew<vtkUnsignedCharArray> all_colors;
+        all_colors->SetNumberOfComponents(3);
+
+        for (int i = 0; i < seeds->GetNumberOfPoints(); i++) {
+            compute_one_streamline(streamlinesData, seeds->GetPoint(i), test1);
+            from_points_to_line(test1->GetPoints(), all_points, all_lines, all_colors);
+        }
+        test1->SetPoints(all_points);
+        test1->SetLines(all_lines);
+        test1->GetCellData()->SetScalars(all_colors);
+
+        // ----------------------------------------------------------------
+        streamlinesMapper = vtkNew<vtkPolyDataMapper>();
+        streamlinesMapper->SetInputData(test1);
+
+        streamlinesActor = vtkNew<vtkActor>();
+        streamlinesActor->SetMapper(streamlinesMapper);
+        streamlinesActor->VisibilityOn();
+        streamlinesActor->GetProperty()->SetLineWidth(1.2);
+
+        streamlinesActor->SetPosition(0, 0, sliceHeight - test1->GetBounds()[4]);
+
+        streamlinesActor->SetVisibility(windMode == 2);
+
     }
 
     void ComputeWindDivergence() {
@@ -410,7 +503,7 @@ public:
         origin[1] += spacing[1] * 20;
         extent[1] -= 20;
         extent[3] -= 20;
-        extent[5] -= 40;
+        extent[5] -= 100;
         slicer->SetOutputExtent(extent);
         slicer->SetOutputOrigin(origin);
         slicer->Update();
@@ -426,7 +519,7 @@ public:
         divergenceRaycastMapper = vtkNew<vtkOpenGLGPUVolumeRayCastMapper>();
         divergenceRaycastMapper->SetInputData(horizontalWindDivergence);
 
-        auto opacityFunction = GetDivergenceOpacityFunction(range[0], range[1], 0.85, -40, 40);
+        auto opacityFunction = GetDivergenceOpacityFunction(range[0], range[1], 0.94, -65, 65);
         auto colorFunction = GetDivergenceColorFunction(range[0], range[1]);
 
         // assign transfer function to volume properties
@@ -683,6 +776,10 @@ public:
             horizontalWindVectorActor->SetVisibility(false);
         }
 
+        renderer->RemoveActor(streamlinesActor);
+        UpdateStreamlines((int)current_slice);
+        renderer->AddActor(streamlinesActor);
+
         renderer->AddActor(horizontalWindVectorActor);
         renderer->Render();
 
@@ -760,9 +857,10 @@ public:
         windMode = (windMode + 1) % 3;
         if (windMode == 2) {
             horizontalWindVectorActor->SetVisibility(false);
-        }
-        else {
+            streamlinesActor->SetVisibility(true);
+        } else {
             horizontalWindVectorActor->SetVisibility(true);
+            streamlinesActor->SetVisibility(false);
         }
 
     }
