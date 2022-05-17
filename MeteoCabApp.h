@@ -48,16 +48,16 @@ using namespace std;
 
 
 class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
-    static MeteoCabApp *New() {
+    static MeteoCabApp* New() {
         return new MeteoCabApp();
     }
 
-vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
+    vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkNew<vtkNamedColors> colors;
 
-/*
- * Pressure Variables
- * */
+    /*
+     * Pressure Variables
+     * */
     bool pressureVisible = true;
     vtkSmartPointer<vtkImageData> pressureData;
     vtkSmartPointer<vtkImageData> slice;
@@ -77,9 +77,9 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     std::vector<float> pressure_slice_minima;
     std::vector<float> pressure_slice_maxima;
 
-/*
- * Heightmap Variables
- * */
+    /*
+     * Heightmap Variables
+     * */
     bool heightmapVisible = false;
     vtkSmartPointer<vtkActor> heightmapActor;
     vtkSmartPointer<vtkScalarBarActor> heightmapLegend;
@@ -89,9 +89,9 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkFloatArray> heightmapColors;
 
 
-/*
- * 2D Wind Variables
- * */
+    /*
+     * 2D Wind Variables
+     * */
     int windMode = 1;
     bool divergenceVisible = false;
     vtkSmartPointer<vtkImageData> horizontalWindDivergence;
@@ -107,9 +107,9 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkGlyph2D> windGlyphs;
     vtkSmartPointer<vtkGlyphSource2D> windGlyphSource;
     vtkSmartPointer<vtkMaskPoints> windMask;
-/*
- * Rendering Variables
- * */
+    /*
+     * Rendering Variables
+     * */
     vtkSmartPointer<vtkRenderer> renderer;
     vtkSmartPointer<vtkRenderWindow> renderWindow;
     vtkSmartPointer<vtkRenderWindowInteractor> interactor;
@@ -117,12 +117,24 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     /*
      * Cloud variables
      * */
-    bool cloudVisible = false;
-    vtkSmartPointer<vtkImageData> cloudData;
-    vtkSmartPointer<vtkVolume> cloudActor;
-    vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> cloudRaycastMapper;
-    vtkSmartPointer<vtkEasyTransfer> cloudTransferFunction;
-    vtkSmartPointer<vtkRenderer> cloudTransferRenderer;
+    bool cliVisible = false;
+    vtkSmartPointer<vtkImageData> cliData;
+    vtkSmartPointer<vtkVolume> cliActor;
+    vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> cliRaycastMapper;
+
+    bool clwVisible = false;
+    vtkSmartPointer<vtkImageData> clwData;
+    vtkSmartPointer<vtkVolume> clwActor;
+    vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> clwRaycastMapper;
+
+    /*
+    * Rain variables
+    * */
+    bool qrVisible = false;
+    vtkSmartPointer<vtkImageData> qrData;
+    vtkSmartPointer<vtkVolume> qrActor;
+    vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> qrRaycastMapper;
+
     /*
  * UI Variables
  * */
@@ -143,7 +155,9 @@ public:
         renderer->AddActor(outlineActor);
         renderer->AddActor(pressureSliceActor);
         renderer->AddActor(heightmapActor);
-        renderer->AddActor(cloudActor);
+        renderer->AddActor(cliActor);
+        renderer->AddActor(clwActor);
+        renderer->AddActor(qrActor);
         renderer->AddActor(divergenceActor);
         renderer->AddActor2D(heightmapLegend);
         renderer->AddActor2D(divLegend);
@@ -254,7 +268,7 @@ public:
         heightmapLookupTable->SetNanColor(130. / 255, 167. / 255, 196. / 255, 1);//sea is blue but discrete cutoff
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
-            double val = height_min + ((double) i / numColors) * (height_max - height_min);
+            double val = height_min + ((double)i / numColors) * (height_max - height_min);
             getColorCorrespondingTovalue(val - baseHeight, r, g, b, height_max - baseHeight, height_min - baseHeight);
             heightmapLookupTable->SetTableValue(i, r, g, b);
         }
@@ -272,7 +286,7 @@ public:
         heightmapLegend->SetWidth(0.05);
 
         heightmapDataMapper->GetInput()->GetPointData()->SetScalars(
-                heightmapColors);//color it based on our computations
+            heightmapColors);//color it based on our computations
         heightmapDataMapper->SetLookupTable(heightmapLookupTable);//link lookup table
         heightmapDataMapper->SetScalarRange(height_min - baseHeight, height_max - baseHeight);
         // ----------------------------------------------------------------
@@ -312,41 +326,6 @@ public:
         planeWidget->SetPoint2(bounds[1], bounds[2], bounds[4]);
 
         planeWidget->On();
-    }
-
-    void InitializeClouds() {
-
-        vtkNew<vtkMetaImageReader> reader;
-        reader->SetFileName(getDataPath("/data/cloudyness.mhd").c_str());
-        reader->Update();
-        cloudData = reader->GetOutput();
-
-        cloudRaycastMapper = vtkNew<vtkOpenGLGPUVolumeRayCastMapper>();
-        cloudRaycastMapper->SetInputData(cloudData);
-
-        // create transfer function
-        cloudTransferFunction = vtkNew<vtkEasyTransfer>();
-        cloudTransferFunction->SetColorUniform(1.0, 1.0, 1.0);        // set initial color map
-        cloudTransferFunction->SetColorRange(0, 0.00507);    // set the value range that is mapped to color
-        cloudTransferFunction->SetCloudOpacityRange(0, 0.00507, 3, 1000,
-                                                    0.9);    // set the value range that is mapped to opacity
-        cloudTransferFunction->RefreshImage();
-
-        // assign transfer function to volume properties
-        vtkSmartPointer<vtkVolumeProperty> volumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
-        volumeProperty->SetColor(cloudTransferFunction->GetColorTransferFunction());
-        volumeProperty->SetScalarOpacity(cloudTransferFunction->GetOpacityTransferFunction());
-
-        // create volume actor and assign mapper and properties
-        cloudActor = vtkNew<vtkVolume>();
-        cloudActor->SetMapper(cloudRaycastMapper);
-        cloudActor->SetProperty(volumeProperty);
-        cloudActor->SetVisibility(cloudVisible);
-
-        // get renderer for the transfer function editor or a white background
-        cloudTransferRenderer = cloudTransferFunction->GetRenderer();
-        cloudTransferRenderer->SetViewport(0.66666, 0, 1, 1);
-
     }
 
     void InitializeHorizontalWind() {
@@ -412,7 +391,7 @@ public:
         gradientFilter->Update();
 
         auto div = gradientFilter->GetOutput();
-        vtkImageData *input = vtkImageData::SafeDownCast(div);
+        vtkImageData* input = vtkImageData::SafeDownCast(div);
         input->GetPointData()->SetActiveScalars("Divergence");
         horizontalWindDivergence = input;
 
@@ -463,11 +442,11 @@ public:
         divLookupTable->SetNumberOfTableValues(20);
         for (int i = 0; i < divLookupTable->GetNumberOfTableValues(); i++) {
             double val = range[0] + ((double)i / divLookupTable->GetNumberOfTableValues()) * (range[1] - range[0]);
-            double* col=colorFunction->GetColor(val);
+            double* col = colorFunction->GetColor(val);
             double op = opacityFunction->GetValue(val);
-            divLookupTable->SetTableValue(i, col[0], col[1], col[2],op);
+            divLookupTable->SetTableValue(i, col[0], col[1], col[2], op);
         }
-        divLookupTable->SetRange(range[0],range[1]);
+        divLookupTable->SetRange(range[0], range[1]);
         divLookupTable->Build();
         divLegend = vtkNew<vtkScalarBarActor>();
         divLegend->SetLookupTable(divLookupTable);
@@ -488,6 +467,101 @@ public:
         divLegend->SetVisibility(divergenceVisible);
     }
 
+    void InitializeClouds() {
+        //CLI
+        vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
+        reader->SetFileName(getDataPath("/data/cli_regular_data_resampled.vti").c_str());
+        reader->Update();
+
+        cliData = reader->GetOutput();
+        cliData->GetPointData()->SetActiveScalars("cli");
+
+        cliRaycastMapper = vtkNew<vtkOpenGLGPUVolumeRayCastMapper>();
+        cliRaycastMapper->SetInputData(cliData);
+
+        double cliRange[2];
+        cliData->GetPointData()->GetScalars("cli")->GetRange(cliRange);
+
+        //for cli
+        auto cliOpacityFunction = GetSimpleOpacityFunction(cliRange[1], 0.85, cliRange[1] / 25.0);
+        auto cliColorFunction = GetSimpleColorFunction(cliRange[1], 1.0, 1.0, 1.0);
+
+        // assign transfer function to volume properties
+        vtkSmartPointer<vtkVolumeProperty> cliVolumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
+        cliVolumeProperty->SetColor(cliColorFunction);
+        cliVolumeProperty->SetScalarOpacity(cliOpacityFunction);
+        cliVolumeProperty->SetInterpolationTypeToLinear();
+
+        // create volume actor and assign mapper and properties
+        cliActor = vtkNew<vtkVolume>();
+        cliActor->SetMapper(cliRaycastMapper);
+        cliActor->SetProperty(cliVolumeProperty);
+        cliActor->SetVisibility(cliVisible);
+
+
+        //CLW
+        reader->SetFileName(getDataPath("/data/clw_regular_data_resampled.vti").c_str());
+        reader->Update();
+
+        clwData = reader->GetOutput();
+        clwData->GetPointData()->SetActiveScalars("clw");
+
+        clwRaycastMapper = vtkNew<vtkOpenGLGPUVolumeRayCastMapper>();
+        clwRaycastMapper->SetInputData(clwData);
+
+        double clwRange[2];
+        clwData->GetPointData()->GetScalars("clw")->GetRange(clwRange);
+
+        //for clw
+        auto clwOpacityFunction = GetSimpleOpacityFunction(clwRange[1], 0.9, clwRange[1] / 30.0);
+        auto clwColorFunction = GetSimpleColorFunction(clwRange[1], 0.4, 0.4, 0.4);
+
+        // assign transfer function to volume properties
+        vtkSmartPointer<vtkVolumeProperty> clwVolumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
+        clwVolumeProperty->SetColor(clwColorFunction);
+        clwVolumeProperty->SetScalarOpacity(clwOpacityFunction);
+        clwVolumeProperty->SetInterpolationTypeToLinear();
+
+        // create volume actor and assign mapper and properties
+        clwActor = vtkNew<vtkVolume>();
+        clwActor->SetMapper(clwRaycastMapper);
+        clwActor->SetProperty(clwVolumeProperty);
+        clwActor->SetVisibility(clwVisible);
+    }
+
+    void InitializeRain() {
+        //qr aka rain
+        vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
+        reader->SetFileName(getDataPath("/data/qr_regular_data_resampled.vti").c_str());
+        reader->Update();
+
+        qrData = reader->GetOutput();
+        qrData->GetPointData()->SetActiveScalars("qr");
+
+        qrRaycastMapper = vtkNew<vtkOpenGLGPUVolumeRayCastMapper>();
+        qrRaycastMapper->SetInputData(qrData);
+
+        double qrRange[2];
+        qrData->GetPointData()->GetScalars("qr")->GetRange(qrRange);
+
+        //for qr
+        auto qrOpacityFunction = GetSimpleOpacityFunction(qrRange[1], 0.95, qrRange[1] / 50.0);
+        auto qrColorFunction = GetSimpleColorFunction(qrRange[1], 0.4, 0.6, 0.99);
+
+        // assign transfer function to volume properties
+        vtkSmartPointer<vtkVolumeProperty> qrVolumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
+        qrVolumeProperty->SetColor(qrColorFunction);
+        qrVolumeProperty->SetScalarOpacity(qrOpacityFunction);
+        qrVolumeProperty->SetInterpolationTypeToLinear();
+
+        // create volume actor and assign mapper and properties
+        qrActor = vtkNew<vtkVolume>();
+        qrActor->SetMapper(qrRaycastMapper);
+        qrActor->SetProperty(qrVolumeProperty);
+        qrActor->SetVisibility(qrVisible);
+    }
+
+
     void Launch() {
         InitializePressureSlicer();
         InitializeHeightmap();
@@ -495,6 +569,7 @@ public:
         InitializeHorizontalWind();
         ComputeWindDivergence();
         InitializeClouds();
+        InitializeRain();
         StartVisualization();
     }
 
@@ -537,7 +612,7 @@ public:
         lookupTable->SetScaleToLinear();
         lookupTable->SetNumberOfTableValues(numColors);
         for (int i = 0; i < numColors; i++) {
-            double val = ((double) i / numColors);
+            double val = ((double)i / numColors);
             double color[3];
             ctf->GetColor(val, color);
             lookupTable->SetTableValue(i, color[0], color[1], color[2]);
@@ -561,7 +636,7 @@ public:
         pressureContourMapper->Update();
         pressureSliceActor->Update();
 
-        double *pos = contourActor->GetPosition();
+        double* pos = contourActor->GetPosition();
         contourActor->SetPosition(pos);
 
     }
@@ -585,7 +660,7 @@ public:
         double sliceHeight = planeOrigin[2];
         double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
 
-        horizontalWindSlicer->SetHeight((int) current_slice);
+        horizontalWindSlicer->SetHeight((int)current_slice);
         horizontalWindSlicer->Update();
 
         windMask->SetInputData(horizontalWindSlicer->GetOutput());
@@ -636,12 +711,23 @@ public:
     }
 
     void ToggleCloudRendering() {
-        cloudVisible = !cloudVisible;
+        cliVisible = !cliVisible;
 
-        cloudActor->SetVisibility(cloudVisible);
+        cliActor->SetVisibility(cliVisible);
+
+        clwVisible = !clwVisible;
+
+        clwActor->SetVisibility(clwVisible);
+
     }
 
-    void HandlePressureInputs(const string &key) {
+    void ToggleRainRendering() {
+        qrVisible = !qrVisible;
+
+        qrActor->SetVisibility(qrVisible);
+    }
+
+    void HandlePressureInputs(const string& key) {
         // Handle an arrow key
         bool pressed = false;
         if (key == "Right") {
@@ -674,7 +760,8 @@ public:
         windMode = (windMode + 1) % 3;
         if (windMode == 2) {
             horizontalWindVectorActor->SetVisibility(false);
-        } else {
+        }
+        else {
             horizontalWindVectorActor->SetVisibility(true);
         }
 
@@ -688,7 +775,7 @@ public:
 
     void OnKeyPress() override {
         // Get the keypress
-        vtkRenderWindowInteractor *rwi = this->Interactor;
+        vtkRenderWindowInteractor* rwi = this->Interactor;
         string key = rwi->GetKeySym();
 
         if (key == "1") {
@@ -708,6 +795,9 @@ public:
         }
         if (key == "5") {
             ToggleDivergence();
+        }
+        if (key == "6") {
+            ToggleRainRendering();
         }
         if (pressureVisible) {
             HandlePressureInputs(key);
