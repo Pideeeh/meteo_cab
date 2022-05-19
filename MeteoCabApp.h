@@ -317,6 +317,7 @@ public:
 
         planeWidgetInteraction = vtkNew<PlaneWidgetInteraction>();
         planeWidgetInteraction->dataSpace = pressureData;
+        planeWidgetInteraction->widget = planeWidget;
         planeWidgetInteraction->app = this;
         planeWidget->AddObserver(vtkCommand::InteractionEvent, planeWidgetInteraction);
         planeWidget->AddObserver(vtkCommand::EndInteractionEvent, planeWidgetInteraction);
@@ -736,6 +737,7 @@ public:
     }
 
     void UpdateWindSlice() {
+        if (windMode == 0) return;
         int dimensions[3];
         horizontalWindData->GetDimensions(dimensions);
 
@@ -881,11 +883,8 @@ public:
         string key = rwi->GetKeySym();
 
         if (key == "1") {
-            divergenceVisible = true;
-            ToggleDivergence();//set divergence inactive
             TogglePressure();
         }
-
         if (key == "2") {
             ToggleHeightmap();
         }
@@ -901,6 +900,12 @@ public:
         if (key == "6") {
             ToggleRainRendering();
         }
+
+        if (key == "h") {
+            planeWidgetInteraction->ToggleOrientation();
+            PlaneWidgetUpdated();
+        }
+
         if (pressureVisible) {
             HandlePressureInputs(key);
         }
