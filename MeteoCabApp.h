@@ -608,7 +608,7 @@ public:
 
         //for clw
         auto clwOpacityFunction = GetSimpleOpacityFunction(clwRange[1], 0.9, clwRange[1] / 30.0);
-        auto clwColorFunction = GetSimpleColorFunction(clwRange[1], 0.2, 0.3, 0.6);
+        auto clwColorFunction = GetSimpleColorFunction(clwRange[1], 0.4, 0.4, 0.4);
 
         // assign transfer function to volume properties
         vtkSmartPointer<vtkVolumeProperty> clwVolumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
