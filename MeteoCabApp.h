@@ -15,6 +15,7 @@
 #include "vtkColorTransferFunction.h"
 #include "vtkXMLImageDataReader.h"
 #include "vtkImageReslice.h"
+#include "vtkDoubleArray.h"
 #include "vtkLookupTable.h"
 #include "vtkTransform.h"
 #include "vtkScalarsToColors.h"
@@ -50,11 +51,11 @@ using namespace std;
 
 
 class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
-    static MeteoCabApp* New() {
+    static MeteoCabApp *New() {
         return new MeteoCabApp();
     }
 
-    vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
+vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkNew<vtkNamedColors> colors;
 
     /*
@@ -275,11 +276,11 @@ public:
         heightmapLookupTable->SetNanColor(130. / 255, 167. / 255, 196. / 255, 1);//sea is blue but discrete cutoff
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
-            double val = height_min + ((double)i / numColors) * (height_max - height_min);
+            double val = height_min + ((double) i / numColors) * (height_max - height_min);
             getColorCorrespondingTovalue(val - baseHeight, r, g, b, height_max - baseHeight, height_min - baseHeight);
             heightmapLookupTable->SetTableValue(i, r, g, b);
         }
-        heightmapLookupTable->SetRange(height_min - baseHeight, height_max - baseHeight);
+        heightmapLookupTable->SetRange((height_min - baseHeight) * 10000, (height_max - baseHeight) * 10000);
         heightmapLookupTable->Build();
         // ----------------------------------------------------------------
         // Create a scalar bar actor for the colormap
@@ -293,7 +294,7 @@ public:
         heightmapLegend->SetWidth(0.05);
 
         heightmapDataMapper->GetInput()->GetPointData()->SetScalars(
-            heightmapColors);//color it based on our computations
+                heightmapColors);//color it based on our computations
         heightmapDataMapper->SetLookupTable(heightmapLookupTable);//link lookup table
         heightmapDataMapper->SetScalarRange(height_min - baseHeight, height_max - baseHeight);
         // ----------------------------------------------------------------
@@ -392,7 +393,7 @@ public:
     }
 
     void UpdateStreamlines(int streamSlice) {
-        if(streamSlice == 0)
+        if (streamSlice == 0)
             streamSlice = 1;
         streamlinesData->GetPointData()->SetActiveScalars("2d_velocity");
 
@@ -484,7 +485,7 @@ public:
         gradientFilter->Update();
 
         auto div = gradientFilter->GetOutput();
-        vtkImageData* input = vtkImageData::SafeDownCast(div);
+        vtkImageData *input = vtkImageData::SafeDownCast(div);
         input->GetPointData()->SetActiveScalars("Divergence");
         horizontalWindDivergence = input;
 
@@ -528,14 +529,14 @@ public:
         volumeProperty->SetScalarOpacity(opacityFunction);
 
         // ----------------------------------------------------------------
-       // Create a lookup table to share between the mapper and the scalar bar
-       // ----------------------------------------------------------------
+        // Create a lookup table to share between the mapper and the scalar bar
+        // ----------------------------------------------------------------
         vtkNew<vtkLookupTable> divLookupTable = vtkNew<vtkLookupTable>();
         divLookupTable->SetScaleToLinear();
         divLookupTable->SetNumberOfTableValues(20);
         for (int i = 0; i < divLookupTable->GetNumberOfTableValues(); i++) {
-            double val = range[0] + ((double)i / divLookupTable->GetNumberOfTableValues()) * (range[1] - range[0]);
-            double* col = colorFunction->GetColor(val);
+            double val = range[0] + ((double) i / divLookupTable->GetNumberOfTableValues()) * (range[1] - range[0]);
+            double *col = colorFunction->GetColor(val);
             double op = opacityFunction->GetValue(val);
             divLookupTable->SetTableValue(i, col[0], col[1], col[2], op);
         }
@@ -607,7 +608,7 @@ public:
 
         //for clw
         auto clwOpacityFunction = GetSimpleOpacityFunction(clwRange[1], 0.9, clwRange[1] / 30.0);
-        auto clwColorFunction = GetSimpleColorFunction(clwRange[1], 0.4, 0.4, 0.4);
+        auto clwColorFunction = GetSimpleColorFunction(clwRange[1], 0.2, 0.3, 0.6);
 
         // assign transfer function to volume properties
         vtkSmartPointer<vtkVolumeProperty> clwVolumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
@@ -705,7 +706,7 @@ public:
         lookupTable->SetScaleToLinear();
         lookupTable->SetNumberOfTableValues(numColors);
         for (int i = 0; i < numColors; i++) {
-            double val = ((double)i / numColors);
+            double val = ((double) i / numColors);
             double color[3];
             ctf->GetColor(val, color);
             lookupTable->SetTableValue(i, color[0], color[1], color[2]);
@@ -729,7 +730,7 @@ public:
         pressureContourMapper->Update();
         pressureSliceActor->Update();
 
-        double* pos = contourActor->GetPosition();
+        double *pos = contourActor->GetPosition();
         contourActor->SetPosition(pos);
 
     }
@@ -753,7 +754,7 @@ public:
         double sliceHeight = planeOrigin[2];
         double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
 
-        horizontalWindSlicer->SetHeight((int)current_slice);
+        horizontalWindSlicer->SetHeight((int) current_slice);
         horizontalWindSlicer->Update();
 
         windMask->SetInputData(horizontalWindSlicer->GetOutput());
@@ -777,7 +778,7 @@ public:
         }
 
         renderer->RemoveActor(streamlinesActor);
-        UpdateStreamlines((int)current_slice);
+        UpdateStreamlines((int) current_slice);
         renderer->AddActor(streamlinesActor);
 
         renderer->AddActor(horizontalWindVectorActor);
@@ -824,7 +825,7 @@ public:
         qrActor->SetVisibility(qrVisible);
     }
 
-    void HandlePressureInputs(const string& key) {
+    void HandlePressureInputs(const string &key) {
         // Handle an arrow key
         bool pressed = false;
         if (key == "Right") {
@@ -858,8 +859,11 @@ public:
         if (windMode == 2) {
             horizontalWindVectorActor->SetVisibility(false);
             streamlinesActor->SetVisibility(true);
-        } else {
+        } else if (windMode == 1) {
             horizontalWindVectorActor->SetVisibility(true);
+            streamlinesActor->SetVisibility(false);
+        } else {
+            horizontalWindVectorActor->SetVisibility(false);
             streamlinesActor->SetVisibility(false);
         }
 
@@ -873,7 +877,7 @@ public:
 
     void OnKeyPress() override {
         // Get the keypress
-        vtkRenderWindowInteractor* rwi = this->Interactor;
+        vtkRenderWindowInteractor *rwi = this->Interactor;
         string key = rwi->GetKeySym();
 
         if (key == "1") {
