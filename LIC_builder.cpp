@@ -27,6 +27,8 @@
 #include <vtkCellData.h>
 #include <vtkXMLImageDataWriter.h>
 #include <vtkPNGWriter.h>
+#include <vtkPiecewiseFunction.h>
+#include "BetterVtkSlicer.h"
 
 void interpolate_velocity(vtkSmartPointer<vtkImageData>& data, double x_location, double y_location, double& u, double& v) {
     double bounds[6];
@@ -238,31 +240,44 @@ int main(int, char* []) {
     // ----------------------------------------------------------------
 
     vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-    reader->SetFileName(getDataPath("/data/2d_velocity.vti").c_str());
+    reader->SetFileName(getDataPath("/data/2d_wind_full.vti").c_str());
     reader->Update();
     vtkSmartPointer<vtkImageData> v = reader->GetOutput();
 
     // ----------------------------------------------------------------
-    // Prepare vectors
+    // Setup slicer
     // ----------------------------------------------------------------
-    vtkDataArray* vectors = v->GetPointData()->GetVectors();
-    v->GetPointData()->SetActiveScalars("2d_velocity");
-    int dim[3];
-    v->GetDimensions(dim);
-    for (int x = 0; x < dim[0]; x++) {
-        for (int y = 0; y < dim[1]; y++) {
-            auto pixel = static_cast<float*>(v->GetScalarPointer(x, y, 0));
-            auto kd = vectors->GetTuple(x + y * dim[0]);
-            pixel[0] = kd[0];
-            pixel[1] = kd[1];
-            pixel[2] = 0.0;
-        }
-    }
+    vtkSmartPointer<BetterVtkSlicer> horizontalWindSlicer = vtkSmartPointer<BetterVtkSlicer>::New();
+    horizontalWindSlicer->SetZSlice();
+    horizontalWindSlicer->SetHeight(0);
+    horizontalWindSlicer->SetInputData(v);
+    horizontalWindSlicer->Update();
 
     for (int i = 0; i < 3; i++) {
 
+        horizontalWindSlicer->SetHeight(i);
+        horizontalWindSlicer->Update();
+        vtkSmartPointer<vtkImageData> slice = horizontalWindSlicer->GetOutput();
+
+        // ----------------------------------------------------------------
+        // Prepare vectors
+        // ----------------------------------------------------------------
+        vtkDataArray* vectors = slice->GetPointData()->GetVectors();
+        slice->GetPointData()->SetActiveScalars("2d_velocity");
+        int dim[3];
+        slice->GetDimensions(dim);
+        for (int x = 0; x < dim[0]; x++) {
+            for (int y = 0; y < dim[1]; y++) {
+                auto pixel = static_cast<float*>(slice->GetScalarPointer(x, y, 0));
+                auto kd = vectors->GetTuple(x + y * dim[0]);
+                pixel[0] = kd[0];
+                pixel[1] = kd[1];
+                pixel[2] = 0.0;
+            }
+        }
+
         double bounds[6];
-        v->GetBounds(bounds);
+        slice->GetBounds(bounds);
         double range[3];
         for (int i = 0; i < 3; ++i) range[i] = bounds[2 * i + 1] - bounds[2 * i];
 
@@ -275,7 +290,6 @@ int main(int, char* []) {
         img_dim[0] = 50;
         img_dim[1] = (img_dim[0] * range[1]) / range[0];
         vtkNew<vtkImageData> noisy_image;
-        noisy_image->SetSpacing(v->GetSpacing());
         create_noisy_img(img_dim[0], img_dim[1], noisy_image);
 
         // ----------------------------------------------------------------
@@ -283,7 +297,6 @@ int main(int, char* []) {
         // ----------------------------------------------------------------
 
         vtkNew<vtkImageData> LIC;
-        LIC->SetSpacing(v->GetSpacing());
         LIC->SetDimensions(img_dim[0], img_dim[1], 1);
         LIC->SetOrigin(.5, .5, 0);
         LIC->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
@@ -312,14 +325,14 @@ int main(int, char* []) {
                 point[1] = bounds[2] + ((y + 0.5) / img_dim[1]) * (range[1]);
                 point[2] = bounds[4];
 
-                compute_one_streamline(v, point, n_steps, s, streamlines_LIC);
+                compute_one_streamline(slice, point, n_steps, s, streamlines_LIC);
 
                 // Compute weighted color of the line forward
                 unsigned char color_forward[3];
                 weighted_color(streamlines_LIC, noisy_image, bounds, img_dim, range, color_forward);
 
                 // Compute streamline backward
-                compute_one_streamline(v, point, n_steps, -s, streamlines_LIC);
+                compute_one_streamline(slice, point, n_steps, -s, streamlines_LIC);
 
                 // Compute weighted color of the line backward
                 unsigned char color_backward[3];
