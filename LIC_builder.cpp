@@ -25,7 +25,8 @@
 #include <vtkCellArray.h>
 #include <vtkUnsignedCharArray.h>
 #include <vtkCellData.h>
-
+#include <vtkXMLImageDataWriter.h>
+#include <vtkPNGWriter.h>
 
 void interpolate_velocity(vtkSmartPointer<vtkImageData>& data, double x_location, double y_location, double& u, double& v) {
     double bounds[6];
@@ -258,82 +259,100 @@ int main(int, char* []) {
         }
     }
 
-    double bounds[6];
-    v->GetBounds(bounds);
-    double range[3];
-    for (int i = 0; i < 3; ++i) range[i] = bounds[2 * i + 1] - bounds[2 * i];
+    for (int i = 0; i < 3; i++) {
 
-    // ----------------------------------------------------------------
-    // Create noise image
-    // ----------------------------------------------------------------
-    // Construction of a random image according to vtk tutorial https://kitware.github.io/vtk-examples/site/Cxx/Images/BorderPixelSize/
+        double bounds[6];
+        v->GetBounds(bounds);
+        double range[3];
+        for (int i = 0; i < 3; ++i) range[i] = bounds[2 * i + 1] - bounds[2 * i];
 
-    int img_dim[2];
-    img_dim[0] = 50;
-    img_dim[1] = (img_dim[0] * range[1])/range[0];
-    vtkNew<vtkImageData> noisy_image;
-    noisy_image->SetSpacing(v->GetSpacing());
-    create_noisy_img(img_dim[0], img_dim[1], noisy_image);
+        // ----------------------------------------------------------------
+        // Create noise image
+        // ----------------------------------------------------------------
+        // Construction of a random image according to vtk tutorial https://kitware.github.io/vtk-examples/site/Cxx/Images/BorderPixelSize/
 
-    // ----------------------------------------------------------------
-    // Construction of LIC texture from vtkStreamTracer. I compute one streamline at a time and find its color.
-    // ----------------------------------------------------------------
+        int img_dim[2];
+        img_dim[0] = 50;
+        img_dim[1] = (img_dim[0] * range[1]) / range[0];
+        vtkNew<vtkImageData> noisy_image;
+        noisy_image->SetSpacing(v->GetSpacing());
+        create_noisy_img(img_dim[0], img_dim[1], noisy_image);
 
-    vtkNew<vtkImageData> LIC;
-    LIC->SetSpacing(v->GetSpacing());
-    LIC->SetDimensions(img_dim[0], img_dim[1], 1);
-    LIC->SetOrigin(.5, .5, 0);
-    LIC->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
+        // ----------------------------------------------------------------
+        // Construction of LIC texture from vtkStreamTracer. I compute one streamline at a time and find its color.
+        // ----------------------------------------------------------------
 
-    vtkNew<vtkCharArray> colors_LIC;
-    colors_LIC->SetNumberOfComponents(3);
-    colors_LIC->SetNumberOfTuples(img_dim[0] * img_dim[1] * 1);
-    colors_LIC->SetName("colors");
+        vtkNew<vtkImageData> LIC;
+        LIC->SetSpacing(v->GetSpacing());
+        LIC->SetDimensions(img_dim[0], img_dim[1], 1);
+        LIC->SetOrigin(.5, .5, 0);
+        LIC->AllocateScalars(VTK_UNSIGNED_CHAR, 3);
 
-    vtkNew<vtkPolyData> streamlines_LIC;
-    int n_steps = 15;
-    double s = 0.01;
+        vtkNew<vtkCharArray> colors_LIC;
+        colors_LIC->SetNumberOfComponents(3);
+        colors_LIC->SetNumberOfTuples(img_dim[0] * img_dim[1] * 1);
+        colors_LIC->SetName("colors");
 
-    for (int y = 0; y < img_dim[1]; y++) {
-        for (int x = 0; x < img_dim[0]; x++) {
+        vtkNew<vtkPolyData> streamlines_LIC;
+        int n_steps = 15;
+        double s = 0.01;
 
-            // find the pixel
-            int pixel[3];
-            pixel[0] = x;
-            pixel[1] = y;
-            pixel[2] = 0;
+        for (int y = 0; y < img_dim[1]; y++) {
+            for (int x = 0; x < img_dim[0]; x++) {
 
-            // Compute streamline forward
-            double point[3];
-            point[0] = bounds[0] + ((x + 0.5) / img_dim[0]) * (range[0]);
-            point[1] = bounds[2] + ((y + 0.5) / img_dim[1]) * (range[1]);
-            point[2] = bounds[4];
+                // find the pixel
+                int pixel[3];
+                pixel[0] = x;
+                pixel[1] = y;
+                pixel[2] = 0;
 
-            compute_one_streamline(v, point, n_steps, s, streamlines_LIC);
-            std::cout << "Streamline" << std::endl;
-            // Compute weighted color of the line forward
-            unsigned char color_forward[3];
-            weighted_color(streamlines_LIC, noisy_image, bounds, img_dim, range, color_forward);
-            std::cout << "color" << std::endl;
-            // Compute streamline backward
-            compute_one_streamline(v, point, n_steps, -s, streamlines_LIC);
-            std::cout << "Streamline" << std::endl;
-            // Compute weighted color of the line backward
-            unsigned char color_backward[3];
-            weighted_color(streamlines_LIC, noisy_image, bounds, img_dim, range, color_backward);
-            std::cout << "color" << std::endl;
-            // Color LIC texture
-            color_forward[0] = (color_forward[0] + color_backward[0]) / 2;
-            color_forward[1] = (color_forward[1] + color_backward[1]) / 2;
-            color_forward[2] = (color_forward[2] + color_backward[2]) / 2;
-            set_texture_color(LIC, pixel, bounds, img_dim, range, color_forward);
-            std::cout << "Streamline" << std::endl;
-            // Counter for debugging
-            int i = x + y * img_dim[0];
-            std::cout << "iteration: " << i << " of " << img_dim[0] * img_dim[1] << std::endl;
+                // Compute streamline forward
+                double point[3];
+                point[0] = bounds[0] + ((x + 0.5) / img_dim[0]) * (range[0]);
+                point[1] = bounds[2] + ((y + 0.5) / img_dim[1]) * (range[1]);
+                point[2] = bounds[4];
+
+                compute_one_streamline(v, point, n_steps, s, streamlines_LIC);
+
+                // Compute weighted color of the line forward
+                unsigned char color_forward[3];
+                weighted_color(streamlines_LIC, noisy_image, bounds, img_dim, range, color_forward);
+
+                // Compute streamline backward
+                compute_one_streamline(v, point, n_steps, -s, streamlines_LIC);
+
+                // Compute weighted color of the line backward
+                unsigned char color_backward[3];
+                weighted_color(streamlines_LIC, noisy_image, bounds, img_dim, range, color_backward);
+
+                // Color LIC texture
+                color_forward[0] = (color_forward[0] + color_backward[0]) / 2;
+                color_forward[1] = (color_forward[1] + color_backward[1]) / 2;
+                color_forward[2] = (color_forward[2] + color_backward[2]) / 2;
+                set_texture_color(LIC, pixel, bounds, img_dim, range, color_forward);
+
+                // Counter for debugging
+                int i = x + y * img_dim[0];
+                std::cout << "iteration: " << i << " of " << img_dim[0] * img_dim[1] << std::endl;
+            }
         }
-    }
 
+        // ----------------------------------------------------------------
+        // Writing files
+        // ----------------------------------------------------------------
+        std::string path_vti = getDataPath("/data/test" + std::to_string(i) + ".vti");
+        vtkNew<vtkXMLImageDataWriter> writer_vti;
+        writer_vti->SetFileName(path_vti.c_str());
+        writer_vti->SetInputData(LIC);
+        writer_vti->Write();
+
+        std::string path_png = getDataPath("/data/test" + std::to_string(i) + ".png");
+        vtkNew<vtkPNGWriter> writer_png;
+        writer_png->SetFileName(path_png.c_str());
+        writer_png->SetInputData(LIC);
+        writer_png->Write();
+    }
+    /*
     // ----------------------------------------------------------------
     // Visualize results
     // ----------------------------------------------------------------
@@ -367,5 +386,6 @@ int main(int, char* []) {
     renderWindowInteractor->Initialize();
 
     renderWindowInteractor->Start();
+    */
     return EXIT_SUCCESS;
 }
