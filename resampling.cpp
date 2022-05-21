@@ -52,7 +52,7 @@ void get_surrounding_slices(double height, int &upper, int &lower, double &coeff
 }
 
 int main() {
-    string filename = "/data/wa/wa_10.vti_scaled";
+    string filename = "/data/pres/pres_10.vti_scaled";
     vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
     //----------------------------
     // this is dataset specific
@@ -87,7 +87,7 @@ int main() {
     bd[3] = dat->GetBounds()[3];
     bd[4] = dat->GetBounds()[4];
     bd[5] = dat->GetBounds()[5];
-    regular_data->AllocateScalars(VTK_DOUBLE, 1);
+    regular_data->AllocateScalars(VTK_FLOAT, 1);
 
     vtkSmartPointer<vtkPointData> pts_reg = regular_data->GetPointData();
     //----------------------------
@@ -107,8 +107,8 @@ int main() {
         getline(myfile, str);
         height.push_back(stod(str) * 0.0001);
     }
-    double upper_height = 20808 * 0.0001;
-    double lower_height = 107 * 0.00001;
+    double upper_height = height[0];
+    double lower_height = height[num_height_samples-1];
 
     regular_data->SetSpacing(dat->GetSpacing()[0], dat->GetSpacing()[1], -(upper_height - lower_height) / resolution);
     regular_data->SetOrigin(dat->GetOrigin()[0], dat->GetOrigin()[1], dat->GetOrigin()[2]);
@@ -126,12 +126,12 @@ int main() {
                 double coeff;
                 get_surrounding_slices(regular_sample_in_data_space, upper, lower, coeff, height);
                 int idx_dat = upper * dims[0] * dims[1] + y * dims[0] + x;
-                double upper_val = static_cast<double *>(float_array->GetTuple(idx_dat))[0];
+                float upper_val = (float_array->GetTuple(idx_dat))[0];
                 idx_dat = lower * dims[0] * dims[1] + y * dims[0] + x;
-                double lower_val = static_cast<double *>(float_array->GetTuple(idx_dat))[0];
+                float lower_val = (float_array->GetTuple(idx_dat))[0];
                 double new_dat_val = coeff * upper_val + (1.0 - coeff) * lower_val;
-                double *v = static_cast<double *>(regular_data->GetScalarPointer(x, y, z));
-                v[0] = new_dat_val;
+                float *v = static_cast<float *>(regular_data->GetScalarPointer(x, y, z));
+                v[0] = (float)new_dat_val;
             }
         }
     }
