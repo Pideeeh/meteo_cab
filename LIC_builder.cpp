@@ -244,6 +244,20 @@ int main(int, char* []) {
     reader->Update();
     vtkSmartPointer<vtkImageData> v = reader->GetOutput();
 
+    double bounds[6];
+    v->GetBounds(bounds);
+    double range[3];
+    for (int i = 0; i < 3; ++i) range[i] = bounds[2 * i + 1] - bounds[2 * i];
+
+    // ----------------------------------------------------------------
+    // Create noise image
+    // ----------------------------------------------------------------
+    // Construction of a random image according to vtk tutorial https://kitware.github.io/vtk-examples/site/Cxx/Images/BorderPixelSize/
+
+    int img_dim[2];
+    img_dim[0] = 576;
+    img_dim[1] = (img_dim[0] * range[1]) / range[0];
+
     // ----------------------------------------------------------------
     // Setup slicer
     // ----------------------------------------------------------------
@@ -252,9 +266,21 @@ int main(int, char* []) {
     horizontalWindSlicer->SetHeight(0);
     horizontalWindSlicer->SetInputData(v);
     horizontalWindSlicer->Update();
+    
+    // ----------------------------------------------------------------
+    // Create noise image. I compute it once for more uniform results.
+    // ----------------------------------------------------------------
+    // Construction of a random image according to vtk tutorial https://kitware.github.io/vtk-examples/site/Cxx/Images/BorderPixelSize/
+    vtkNew<vtkImageData> noisy_image;
+    create_noisy_img(img_dim[0], img_dim[1], noisy_image);
 
-    for (int i = 0; i < 3; i++) {
 
+    int extents[6];
+    v->GetExtent(extents);
+    int iterations = extents[5] - extents[4];
+
+    for (int i = 0; i < iterations; i++) {
+        std::cout << "image: " << i << " of " << iterations << " started" << std::endl;
         horizontalWindSlicer->SetHeight(i);
         horizontalWindSlicer->Update();
         vtkSmartPointer<vtkImageData> slice = horizontalWindSlicer->GetOutput();
@@ -275,22 +301,6 @@ int main(int, char* []) {
                 pixel[2] = 0.0;
             }
         }
-
-        double bounds[6];
-        slice->GetBounds(bounds);
-        double range[3];
-        for (int i = 0; i < 3; ++i) range[i] = bounds[2 * i + 1] - bounds[2 * i];
-
-        // ----------------------------------------------------------------
-        // Create noise image
-        // ----------------------------------------------------------------
-        // Construction of a random image according to vtk tutorial https://kitware.github.io/vtk-examples/site/Cxx/Images/BorderPixelSize/
-
-        int img_dim[2];
-        img_dim[0] = 50;
-        img_dim[1] = (img_dim[0] * range[1]) / range[0];
-        vtkNew<vtkImageData> noisy_image;
-        create_noisy_img(img_dim[0], img_dim[1], noisy_image);
 
         // ----------------------------------------------------------------
         // Construction of LIC texture from vtkStreamTracer. I compute one streamline at a time and find its color.
@@ -346,7 +356,6 @@ int main(int, char* []) {
 
                 // Counter for debugging
                 int i = x + y * img_dim[0];
-                std::cout << "iteration: " << i << " of " << img_dim[0] * img_dim[1] << std::endl;
             }
         }
 
@@ -364,6 +373,7 @@ int main(int, char* []) {
         writer_png->SetFileName(path_png.c_str());
         writer_png->SetInputData(LIC);
         writer_png->Write();
+        std::cout << "image: " << i << " of " << iterations << " done" << std::endl;
     }
     /*
     // ----------------------------------------------------------------
