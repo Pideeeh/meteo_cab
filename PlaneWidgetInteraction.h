@@ -14,7 +14,7 @@
 
 class PlaneWidgetInteraction : public vtkCommand {
 public:
-    vtkTypeMacro(PlaneWidgetInteraction, vtkCommand);
+vtkTypeMacro(PlaneWidgetInteraction, vtkCommand);
 
     static PlaneWidgetInteraction *New() {
         return new PlaneWidgetInteraction;
@@ -22,27 +22,9 @@ public:
 
 
     void Execute(vtkObject *caller, unsigned long eventId, void *callData) {
-        vtkPlaneWidget *widget = static_cast<vtkPlaneWidget *>(caller);
-        widget->SetNormal(0, 0, 1);
-
+        this->SetWidgetNormal();
         //Make sure plane is always in outline space of data (using pressure)
-        double center[3];
-        dataSpace->GetCenter(center);
-        double bounds[6];
-        dataSpace->GetBounds(bounds);
-
-        double planeCenter[3];
-        widget->GetCenter(planeCenter);
-        planeCenter[0] = center[0];
-        planeCenter[1] = center[1];
-
-        planeCenter[2] = fmax(fmin(planeCenter[2], bounds[5]), bounds[4]);
-
-        widget->SetCenter(planeCenter);
-
-        widget->SetOrigin(bounds[0], bounds[2], planeCenter[2]);
-        widget->SetPoint1(bounds[0], bounds[3], planeCenter[2]);
-        widget->SetPoint2(bounds[1], bounds[2], planeCenter[2]);
+        UpdateWidget();
 
         updated = true;
         if (eventId == vtkCommand::EndInteractionEvent) {
@@ -50,8 +32,76 @@ public:
         }
     }
 
+    void UpdateWidget() {
+        double center[3];
+        dataSpace->GetCenter(center);
+        double bounds[6];
+        dataSpace->GetBounds(bounds);
+
+        double planeCenter[3];
+        widget->GetCenter(planeCenter);
+        planeCenter[0] = fmax(fmin(planeCenter[0], bounds[1]), bounds[0]);
+        planeCenter[1] = fmax(fmin(planeCenter[1], bounds[3]), bounds[2]);
+        planeCenter[2] = fmax(fmin(planeCenter[2], bounds[5]), bounds[4]);
+
+        widget->SetCenter(planeCenter);
+
+        if (zAxis) {
+            widget->SetOrigin(bounds[0], bounds[2], planeCenter[2]);
+            widget->SetPoint1(bounds[0], bounds[3], planeCenter[2]);
+            widget->SetPoint2(bounds[1], bounds[2], planeCenter[2]);
+        }
+        if (xAxis) {
+            widget->SetOrigin(planeCenter[0], bounds[2], bounds[4]);
+            widget->SetPoint1(planeCenter[0], bounds[2], bounds[5]);
+            widget->SetPoint2(planeCenter[0], bounds[3], bounds[4]);
+        }
+        if (yAxis) {
+            widget->SetOrigin(bounds[0], planeCenter[1], bounds[4]);
+            widget->SetPoint1(bounds[0], planeCenter[1], bounds[5]);
+            widget->SetPoint2(bounds[1], planeCenter[1], bounds[4]);
+        }
+    }
+
+    void SetWidgetNormal() {
+
+        if (xAxis) {
+            widget->SetNormal(1, 0, 0);
+        }
+        if (yAxis) {
+            widget->SetNormal(0, 1, 0);
+        }
+        if (zAxis) {
+            widget->SetNormal(0, 0, 1);
+        }
+
+    }
+
+    void ToggleOrientation() {
+
+        if (zAxis) {
+            zAxis = false;
+            xAxis = true;
+        } else if (xAxis) {
+            xAxis = false;
+            yAxis = true;
+        } else {
+            zAxis = true;
+            yAxis = false;
+        }
+
+
+        UpdateWidget();
+    }
+
+    bool zAxis = true;
+    bool xAxis = false;
+    bool yAxis = false;
+
     bool updated = false;
     vtkSmartPointer<vtkImageData> dataSpace;
+    vtkSmartPointer<vtkPlaneWidget> widget;
     vtkSmartPointer<vtkInteractorStyleTrackballCamera> app;
 };
+
 #endif //VIS2021_PLANEWIDGETINTERACTION_H

@@ -15,6 +15,7 @@
 #include "vtkColorTransferFunction.h"
 #include "vtkXMLImageDataReader.h"
 #include "vtkImageReslice.h"
+#include "vtkDoubleArray.h"
 #include "vtkLookupTable.h"
 #include "vtkTransform.h"
 #include "vtkScalarsToColors.h"
@@ -28,6 +29,7 @@
 #include "vtkProperty.h"
 #include "vtkOBJReader.h"
 #include "vtkPlaneWidget.h"
+#include "vtkCellData.h"
 #include "vtkFloatArray.h"
 #include "vtkMetaImageReader.h"
 #include "vtkVolumeProperty.h"
@@ -43,16 +45,17 @@
 #include "dataSetDefinitions.h"
 #include "PlaneWidgetInteraction.h"
 #include "BetterVtkSlicer.h"
+#include "streamline_functions.h"
 
 using namespace std;
 
 
 class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
-    static MeteoCabApp* New() {
+    static MeteoCabApp *New() {
         return new MeteoCabApp();
     }
 
-    vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
+vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkNew<vtkNamedColors> colors;
 
     /*
@@ -102,14 +105,18 @@ class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
 
     vtkSmartPointer<vtkActor> horizontalWindVectorActor;
     vtkSmartPointer<vtkImageData> horizontalWindData;
+    vtkSmartPointer<vtkImageData> streamlinesData;
     vtkSmartPointer<BetterVtkSlicer> horizontalWindSlicer;
     vtkSmartPointer<vtkPolyDataMapper> windMapper;
     vtkSmartPointer<vtkGlyph2D> windGlyphs;
     vtkSmartPointer<vtkGlyphSource2D> windGlyphSource;
     vtkSmartPointer<vtkMaskPoints> windMask;
-    /*
-     * Rendering Variables
-     * */
+
+    vtkSmartPointer<vtkPolyDataMapper> streamlinesMapper;
+    vtkSmartPointer<vtkActor> streamlinesActor;
+/*
+ * Rendering Variables
+ * */
     vtkSmartPointer<vtkRenderer> renderer;
     vtkSmartPointer<vtkRenderWindow> renderWindow;
     vtkSmartPointer<vtkRenderWindowInteractor> interactor;
@@ -162,6 +169,7 @@ public:
         renderer->AddActor2D(heightmapLegend);
         renderer->AddActor2D(divLegend);
         renderer->AddActor(horizontalWindVectorActor);
+        renderer->AddActor(streamlinesActor);
         renderer->SetBackground(0.7, 0.7, 0.7);
         interactor->SetInteractorStyle(this);
         renderWindow->SetSize(500, 500);
@@ -268,11 +276,11 @@ public:
         heightmapLookupTable->SetNanColor(130. / 255, 167. / 255, 196. / 255, 1);//sea is blue but discrete cutoff
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
-            double val = height_min + ((double)i / numColors) * (height_max - height_min);
+            double val = height_min + ((double) i / numColors) * (height_max - height_min);
             getColorCorrespondingTovalue(val - baseHeight, r, g, b, height_max - baseHeight, height_min - baseHeight);
             heightmapLookupTable->SetTableValue(i, r, g, b);
         }
-        heightmapLookupTable->SetRange(height_min - baseHeight, height_max - baseHeight);
+        heightmapLookupTable->SetRange((height_min - baseHeight) * 10000, (height_max - baseHeight) * 10000);
         heightmapLookupTable->Build();
         // ----------------------------------------------------------------
         // Create a scalar bar actor for the colormap
@@ -286,7 +294,7 @@ public:
         heightmapLegend->SetWidth(0.05);
 
         heightmapDataMapper->GetInput()->GetPointData()->SetScalars(
-            heightmapColors);//color it based on our computations
+                heightmapColors);//color it based on our computations
         heightmapDataMapper->SetLookupTable(heightmapLookupTable);//link lookup table
         heightmapDataMapper->SetScalarRange(height_min - baseHeight, height_max - baseHeight);
         // ----------------------------------------------------------------
@@ -309,6 +317,7 @@ public:
 
         planeWidgetInteraction = vtkNew<PlaneWidgetInteraction>();
         planeWidgetInteraction->dataSpace = pressureData;
+        planeWidgetInteraction->widget = planeWidget;
         planeWidgetInteraction->app = this;
         planeWidget->AddObserver(vtkCommand::InteractionEvent, planeWidgetInteraction);
         planeWidget->AddObserver(vtkCommand::EndInteractionEvent, planeWidgetInteraction);
@@ -362,7 +371,7 @@ public:
         windGlyphs->SetSourceConnection(windGlyphSource->GetOutputPort());
         windGlyphs->OrientOn();
         windGlyphs->SetScaleModeToScaleByVector();
-        windGlyphs->SetScaleFactor(0.04);
+        windGlyphs->SetScaleFactor(0.02);
         windGlyphs->Update();
 
         windMapper = vtkNew<vtkPolyDataMapper>();
@@ -376,6 +385,92 @@ public:
         horizontalWindVectorActor->GetPosition(position);
         position[2] = horizontalWindData->GetBounds()[4];
         horizontalWindVectorActor->SetPosition(position);
+
+
+        streamlinesData = vtkNew<vtkImageData>();
+        streamlinesData->DeepCopy(horizontalWindData);
+        UpdateStreamlines(0);
+
+    }
+
+    void UpdateStreamlines(int streamSlice) {
+        if (streamSlice == 0)
+            streamSlice = 1;
+        streamlinesData->GetPointData()->SetActiveScalars("2d_velocity");
+
+        double spacing[3];
+        double origin[3];
+        streamlinesData->GetSpacing(spacing);
+        streamlinesData->GetOrigin(origin);
+
+        double sliceHeight = streamSlice * spacing[2] + origin[2];
+
+        double N = 15;
+        double bounds[6];
+        streamlinesData->GetBounds(bounds);
+        double range[3];
+        for (int i = 0; i < 3; ++i) range[i] = bounds[2 * i + 1] - bounds[2 * i];
+
+        vtkNew<vtkPoints> array_seeds;
+        for (int y = 0; y <= N; y++) {
+            for (int x = 0; x <= N; x++) {
+                array_seeds->InsertNextPoint(
+                        bounds[0] + (x / N) * (range[0]),
+                        bounds[2] + (y / N) * (range[1]),
+                        sliceHeight);
+            }
+        }
+
+        vtkSmartPointer<vtkPolyData> seeds = vtkSmartPointer<vtkPolyData>::New();
+        seeds->SetPoints(array_seeds);
+
+
+        vtkDataArray *vectors = streamlinesData->GetPointData()->GetVectors();
+        streamlinesData->GetPointData()->SetActiveScalars("2d_velocity");
+        int dim[3];
+        streamlinesData->GetDimensions(dim);
+        int z = streamSlice;
+        for (int x = 0; x < dim[0]; x++) {
+            for (int y = 0; y < dim[1]; y++) {
+                auto pixel = static_cast<float *>(streamlinesData->GetScalarPointer(x, y, 0));
+                auto kd = vectors->GetTuple(x + y * dim[0] + z * dim[0] * dim[1]);
+                pixel[0] = kd[0];
+                pixel[1] = kd[1];
+                pixel[2] = 0.0;
+            }
+        }
+
+
+
+        // ----------------------------------------------------------------
+        // TODO: test code for new streamlines visualization
+        vtkNew<vtkPolyData> test1;
+        vtkNew<vtkPoints> all_points;
+        vtkNew<vtkCellArray> all_lines;
+        vtkNew<vtkUnsignedCharArray> all_colors;
+        all_colors->SetNumberOfComponents(3);
+
+        for (int i = 0; i < seeds->GetNumberOfPoints(); i++) {
+            compute_one_streamline(streamlinesData, seeds->GetPoint(i), test1);
+            from_points_to_line(test1->GetPoints(), all_points, all_lines, all_colors);
+        }
+        test1->SetPoints(all_points);
+        test1->SetLines(all_lines);
+        test1->GetCellData()->SetScalars(all_colors);
+
+        // ----------------------------------------------------------------
+        streamlinesMapper = vtkNew<vtkPolyDataMapper>();
+        streamlinesMapper->SetInputData(test1);
+
+        streamlinesActor = vtkNew<vtkActor>();
+        streamlinesActor->SetMapper(streamlinesMapper);
+        streamlinesActor->VisibilityOn();
+        streamlinesActor->GetProperty()->SetLineWidth(1.2);
+
+        streamlinesActor->SetPosition(0, 0, sliceHeight - test1->GetBounds()[4]);
+
+        streamlinesActor->SetVisibility(windMode == 2);
+
     }
 
     void ComputeWindDivergence() {
@@ -391,7 +486,7 @@ public:
         gradientFilter->Update();
 
         auto div = gradientFilter->GetOutput();
-        vtkImageData* input = vtkImageData::SafeDownCast(div);
+        vtkImageData *input = vtkImageData::SafeDownCast(div);
         input->GetPointData()->SetActiveScalars("Divergence");
         horizontalWindDivergence = input;
 
@@ -410,7 +505,7 @@ public:
         origin[1] += spacing[1] * 20;
         extent[1] -= 20;
         extent[3] -= 20;
-        extent[5] -= 40;
+        extent[5] -= 100;
         slicer->SetOutputExtent(extent);
         slicer->SetOutputOrigin(origin);
         slicer->Update();
@@ -426,7 +521,7 @@ public:
         divergenceRaycastMapper = vtkNew<vtkOpenGLGPUVolumeRayCastMapper>();
         divergenceRaycastMapper->SetInputData(horizontalWindDivergence);
 
-        auto opacityFunction = GetDivergenceOpacityFunction(range[0], range[1], 0.85, -40, 40);
+        auto opacityFunction = GetDivergenceOpacityFunction(range[0], range[1], 0.94, -65, 65);
         auto colorFunction = GetDivergenceColorFunction(range[0], range[1]);
 
         // assign transfer function to volume properties
@@ -435,14 +530,14 @@ public:
         volumeProperty->SetScalarOpacity(opacityFunction);
 
         // ----------------------------------------------------------------
-       // Create a lookup table to share between the mapper and the scalar bar
-       // ----------------------------------------------------------------
+        // Create a lookup table to share between the mapper and the scalar bar
+        // ----------------------------------------------------------------
         vtkNew<vtkLookupTable> divLookupTable = vtkNew<vtkLookupTable>();
         divLookupTable->SetScaleToLinear();
         divLookupTable->SetNumberOfTableValues(20);
         for (int i = 0; i < divLookupTable->GetNumberOfTableValues(); i++) {
-            double val = range[0] + ((double)i / divLookupTable->GetNumberOfTableValues()) * (range[1] - range[0]);
-            double* col = colorFunction->GetColor(val);
+            double val = range[0] + ((double) i / divLookupTable->GetNumberOfTableValues()) * (range[1] - range[0]);
+            double *col = colorFunction->GetColor(val);
             double op = opacityFunction->GetValue(val);
             divLookupTable->SetTableValue(i, col[0], col[1], col[2], op);
         }
@@ -612,7 +707,7 @@ public:
         lookupTable->SetScaleToLinear();
         lookupTable->SetNumberOfTableValues(numColors);
         for (int i = 0; i < numColors; i++) {
-            double val = ((double)i / numColors);
+            double val = ((double) i / numColors);
             double color[3];
             ctf->GetColor(val, color);
             lookupTable->SetTableValue(i, color[0], color[1], color[2]);
@@ -636,12 +731,13 @@ public:
         pressureContourMapper->Update();
         pressureSliceActor->Update();
 
-        double* pos = contourActor->GetPosition();
+        double *pos = contourActor->GetPosition();
         contourActor->SetPosition(pos);
 
     }
 
     void UpdateWindSlice() {
+        if (windMode == 0) return;
         int dimensions[3];
         horizontalWindData->GetDimensions(dimensions);
 
@@ -660,7 +756,7 @@ public:
         double sliceHeight = planeOrigin[2];
         double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
 
-        horizontalWindSlicer->SetHeight((int)current_slice);
+        horizontalWindSlicer->SetHeight((int) current_slice);
         horizontalWindSlicer->Update();
 
         windMask->SetInputData(horizontalWindSlicer->GetOutput());
@@ -682,6 +778,10 @@ public:
         if (windMode == 2) {
             horizontalWindVectorActor->SetVisibility(false);
         }
+
+        renderer->RemoveActor(streamlinesActor);
+        UpdateStreamlines((int) current_slice);
+        renderer->AddActor(streamlinesActor);
 
         renderer->AddActor(horizontalWindVectorActor);
         renderer->Render();
@@ -727,7 +827,7 @@ public:
         qrActor->SetVisibility(qrVisible);
     }
 
-    void HandlePressureInputs(const string& key) {
+    void HandlePressureInputs(const string &key) {
         // Handle an arrow key
         bool pressed = false;
         if (key == "Right") {
@@ -760,9 +860,13 @@ public:
         windMode = (windMode + 1) % 3;
         if (windMode == 2) {
             horizontalWindVectorActor->SetVisibility(false);
-        }
-        else {
+            streamlinesActor->SetVisibility(true);
+        } else if (windMode == 1) {
             horizontalWindVectorActor->SetVisibility(true);
+            streamlinesActor->SetVisibility(false);
+        } else {
+            horizontalWindVectorActor->SetVisibility(false);
+            streamlinesActor->SetVisibility(false);
         }
 
     }
@@ -775,15 +879,12 @@ public:
 
     void OnKeyPress() override {
         // Get the keypress
-        vtkRenderWindowInteractor* rwi = this->Interactor;
+        vtkRenderWindowInteractor *rwi = this->Interactor;
         string key = rwi->GetKeySym();
 
         if (key == "1") {
-            divergenceVisible = true;
-            ToggleDivergence();//set divergence inactive
             TogglePressure();
         }
-
         if (key == "2") {
             ToggleHeightmap();
         }
@@ -799,6 +900,12 @@ public:
         if (key == "6") {
             ToggleRainRendering();
         }
+
+        if (key == "h") {
+            planeWidgetInteraction->ToggleOrientation();
+            PlaneWidgetUpdated();
+        }
+
         if (pressureVisible) {
             HandlePressureInputs(key);
         }
