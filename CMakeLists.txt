@@ -38,3 +38,8 @@ vtk_module_autoinit(TARGETS Resampling MODULES ${VTK_LIBRARIES})
 add_executable(App MeteoAppLauncher.cpp)
 target_link_libraries(App PRIVATE ${VTK_LIBRARIES})
 vtk_module_autoinit(TARGETS App MODULES ${VTK_LIBRARIES})
+
+
+add_executable(LICbuilder LIC_builder.cpp)
+target_link_libraries(LICbuilder PRIVATE ${VTK_LIBRARIES})
+vtk_module_autoinit(TARGETS LICbuilder MODULES ${VTK_LIBRARIES})
