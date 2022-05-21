@@ -179,7 +179,7 @@ public:
 
     void InitializePressureSlicer() {
         vtkNew<vtkXMLImageDataReader> reader;
-        reader->SetFileName(getDataPath("/data/press_full.vti").c_str());
+        reader->SetFileName(getDataPath("/data/pres_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
         this->pressureData = reader->GetOutput();
         this->pressureData->GetPointData()->SetActiveScalars("pres");
@@ -565,7 +565,7 @@ public:
     void InitializeClouds() {
         //CLI
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-        reader->SetFileName(getDataPath("/data/cli_regular_data_resampled.vti").c_str());
+        reader->SetFileName(getDataPath("/data/cli_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
 
         cliData = reader->GetOutput();
@@ -595,7 +595,7 @@ public:
 
 
         //CLW
-        reader->SetFileName(getDataPath("/data/clw_regular_data_resampled.vti").c_str());
+        reader->SetFileName(getDataPath("/data/clw_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
 
         clwData = reader->GetOutput();
@@ -627,7 +627,7 @@ public:
     void InitializeRain() {
         //qr aka rain
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-        reader->SetFileName(getDataPath("/data/qr_regular_data_resampled.vti").c_str());
+        reader->SetFileName(getDataPath("/data/qr_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
 
         qrData = reader->GetOutput();

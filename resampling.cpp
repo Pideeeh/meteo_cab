@@ -52,7 +52,7 @@ void get_surrounding_slices(double height, int &upper, int &lower, double &coeff
 }
 
 int main() {
-    string filename = "/data/pres/pres_10.vti_scaled";
+    string filename = "/data/qr/qr_10.vti_scaled";
     vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
     //----------------------------
     // this is dataset specific
@@ -138,7 +138,7 @@ int main() {
     cout << regular_data->GetPointData()->GetArrayName(0) << endl;
 
     vtkSmartPointer<vtkXMLImageDataWriter> writer = vtkSmartPointer<vtkXMLImageDataWriter>::New();
-    writer->SetFileName(getDataPath(filename + "_resampled.vti").c_str());
+    writer->SetFileName(getDataPath(filename + "_regularly_resampled.vti").c_str());
     writer->SetInputData(regular_data);
     writer->Write();
     return 0;
