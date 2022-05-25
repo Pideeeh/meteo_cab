@@ -1,5 +1,4 @@
 #include <random>
-
 #include <vtkRenderer.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
@@ -240,7 +239,7 @@ int main(int, char* []) {
     // ----------------------------------------------------------------
 
     vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-    reader->SetFileName(getDataPath("/data/2d_wind_full.vti").c_str());
+    reader->SetFileName(getDataPath("/data/2d_wind_full_regularly_resampled_downsampled.vti").c_str());
     reader->Update();
     vtkSmartPointer<vtkImageData> v = reader->GetOutput();
 
@@ -255,7 +254,7 @@ int main(int, char* []) {
     // Construction of a random image according to vtk tutorial https://kitware.github.io/vtk-examples/site/Cxx/Images/BorderPixelSize/
 
     int img_dim[2];
-    img_dim[0] = 576;
+    img_dim[0] = 720;
     img_dim[1] = (img_dim[0] * range[1]) / range[0];
 
     // ----------------------------------------------------------------
@@ -279,7 +278,8 @@ int main(int, char* []) {
     v->GetExtent(extents);
     int iterations = extents[5] - extents[4];
 
-    for (int i = 0; i < iterations; i++) {
+    for (int i = 0; i <= iterations; i++) {
+        // if (i % 2 != 0) continue;
         std::cout << "image: " << i << " of " << iterations << " started" << std::endl;
         horizontalWindSlicer->SetHeight(i);
         horizontalWindSlicer->Update();
@@ -362,13 +362,13 @@ int main(int, char* []) {
         // ----------------------------------------------------------------
         // Writing files
         // ----------------------------------------------------------------
-        std::string path_vti = getDataPath("/data/test" + std::to_string(i) + ".vti");
+        std::string path_vti = getDataPath("/data/lic" + std::to_string(i) + ".vti");
         vtkNew<vtkXMLImageDataWriter> writer_vti;
         writer_vti->SetFileName(path_vti.c_str());
         writer_vti->SetInputData(LIC);
         writer_vti->Write();
 
-        std::string path_png = getDataPath("/data/test" + std::to_string(i) + ".png");
+        std::string path_png = getDataPath("/data/lic" + std::to_string(i) + ".png");
         vtkNew<vtkPNGWriter> writer_png;
         writer_png->SetFileName(path_png.c_str());
         writer_png->SetInputData(LIC);
@@ -381,8 +381,8 @@ int main(int, char* []) {
     // ----------------------------------------------------------------
     vtkNew<vtkImageMapper> img_map;
     img_map->SetInputData(LIC);
-    img_map->SetColorWindow(255); // width of the color range to map to
-    img_map->SetColorLevel(127.5); // center of the color range to map to
+    img_map->SetColorWindow(255);
+    img_map->SetColorLevel(127.5);
 
     vtkNew<vtkActor2D> image_actor;
     image_actor->SetMapper(img_map);

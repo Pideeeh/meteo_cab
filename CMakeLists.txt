@@ -43,3 +43,7 @@ vtk_module_autoinit(TARGETS App MODULES ${VTK_LIBRARIES})
 add_executable(LICbuilder LIC_builder.cpp)
 target_link_libraries(LICbuilder PRIVATE ${VTK_LIBRARIES})
 vtk_module_autoinit(TARGETS LICbuilder MODULES ${VTK_LIBRARIES})
+
+add_executable(LICvisualize LIC_visualize.cpp)
+target_link_libraries(LICvisualize PRIVATE ${VTK_LIBRARIES})
+vtk_module_autoinit(TARGETS LICvisualize MODULES ${VTK_LIBRARIES})
