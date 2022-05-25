@@ -179,7 +179,7 @@ public:
 
     void InitializePressureSlicer() {
         vtkNew<vtkXMLImageDataReader> reader;
-        reader->SetFileName(getDataPath("/data/press_full.vti").c_str());
+        reader->SetFileName(getDataPath("/data/pres_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
         this->pressureData = reader->GetOutput();
         this->pressureData->GetPointData()->SetActiveScalars("pres");
@@ -245,9 +245,8 @@ public:
         // ----------------------------------------------------------------
         // color initialization based on height
         // ----------------------------------------------------------------
-        double baseHeight = pressureData->GetOrigin()[2];
-        double height_min = baseHeight + 0;//initialization on values of our height data
-        double height_max = baseHeight + 0.244379;
+        double height_min = 0;//initialization on values of our height data
+        double height_max = 10*0.244379;
         double numColors = 20;
 
         // ----------------------------------------------------------------
@@ -262,7 +261,7 @@ public:
         heightmapColors = vtkNew<vtkFloatArray>();
         heightmapColors->SetNumberOfValues(577290);
         for (int i = 0; i < heightmapColors->GetNumberOfValues(); i++) {//go over vertices
-            heightmapColors->SetValue(i, heightmapDataMapper->GetInput()->GetPoint(i)[2]);
+            heightmapColors->SetValue(i, 10*heightmapDataMapper->GetInput()->GetPoint(i)[2]);
             if (heightmapDataMapper->GetInput()->GetPoint(i)[2] == 0) {//sea
                 heightmapColors->SetValue(i, NAN);
             }
@@ -277,10 +276,9 @@ public:
         double r, g, b;
         for (int i = 0; i < numColors; i++) {
             double val = height_min + ((double) i / numColors) * (height_max - height_min);
-            getColorCorrespondingTovalue(val - baseHeight, r, g, b, height_max - baseHeight, height_min - baseHeight);
+            getColorCorrespondingTovalue(val, r, g, b, height_max, height_min);
             heightmapLookupTable->SetTableValue(i, r, g, b);
         }
-        heightmapLookupTable->SetRange((height_min - baseHeight) * 10000, (height_max - baseHeight) * 10000);
         heightmapLookupTable->Build();
         // ----------------------------------------------------------------
         // Create a scalar bar actor for the colormap
@@ -288,7 +286,7 @@ public:
         heightmapLegend = vtkNew<vtkScalarBarActor>();
         heightmapLegend->SetLookupTable(heightmapLookupTable);
         heightmapLegend->SetNumberOfLabels(3);
-        heightmapLegend->SetTitle("height");
+        heightmapLegend->SetTitle("height [km]");
         heightmapLegend->SetVerticalTitleSeparation(6);
         heightmapLegend->GetPositionCoordinate()->SetValue(0.85, 0.1);
         heightmapLegend->SetWidth(0.05);
@@ -296,7 +294,7 @@ public:
         heightmapDataMapper->GetInput()->GetPointData()->SetScalars(
                 heightmapColors);//color it based on our computations
         heightmapDataMapper->SetLookupTable(heightmapLookupTable);//link lookup table
-        heightmapDataMapper->SetScalarRange(height_min - baseHeight, height_max - baseHeight);
+        heightmapDataMapper->SetScalarRange((height_min), (height_max));
         // ----------------------------------------------------------------
         // Create an actor
         // ----------------------------------------------------------------
@@ -306,7 +304,7 @@ public:
         double origin[3];
         origin[0] = 0;
         origin[1] = 0;
-        origin[2] = pressureData->GetOrigin()[2];
+        origin[2] = pressureData->GetOrigin()[2]- 106.81226*0.0001;
         heightmapActor->SetPosition(origin);
     }
 
@@ -565,7 +563,7 @@ public:
     void InitializeClouds() {
         //CLI
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-        reader->SetFileName(getDataPath("/data/cli_regular_data_resampled.vti").c_str());
+        reader->SetFileName(getDataPath("/data/cli_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
 
         cliData = reader->GetOutput();
@@ -595,7 +593,7 @@ public:
 
 
         //CLW
-        reader->SetFileName(getDataPath("/data/clw_regular_data_resampled.vti").c_str());
+        reader->SetFileName(getDataPath("/data/clw_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
 
         clwData = reader->GetOutput();
@@ -627,7 +625,7 @@ public:
     void InitializeRain() {
         //qr aka rain
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-        reader->SetFileName(getDataPath("/data/qr_regular_data_resampled.vti").c_str());
+        reader->SetFileName(getDataPath("/data/qr_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
 
         qrData = reader->GetOutput();
@@ -672,6 +670,8 @@ public:
 
         int dimensions[3];
         pressureData->GetDimensions(dimensions);
+        double bounds[6];
+        pressureData->GetBounds(bounds);
 
         double dataOrigin[3];
         pressureData->GetOrigin(dataOrigin);
@@ -686,7 +686,7 @@ public:
         double planeOrigin[3];
         plane->GetOrigin(planeOrigin);
 
-        double sliceHeight = planeOrigin[2];
+        double sliceHeight = std::min(bounds[5],std::max(planeOrigin[2],bounds[4]));//avoid exception when user goes too far
         double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
 
         pressureSliceMapper->SetSlicePlane(plane);
@@ -719,7 +719,7 @@ public:
         // ----------------------------------------------------------------
         pressureLegend->SetLookupTable(lookupTable);
         pressureLegend->SetNumberOfLabels(3);
-        pressureLegend->SetTitle("pressure");
+        pressureLegend->SetTitle("pressure [Pa]");
         pressureLegend->SetVerticalTitleSeparation(6);
         pressureLegend->GetPositionCoordinate()->SetValue(0.93, 0.1);
         pressureLegend->SetWidth(0.05);
@@ -753,7 +753,9 @@ public:
         double planeOrigin[3];
         plane->GetOrigin(planeOrigin);
 
-        double sliceHeight = planeOrigin[2];
+        double bounds[6];
+        horizontalWindData->GetBounds(bounds);
+        double sliceHeight = std::min(bounds[5], std::max(planeOrigin[2], bounds[4]));//avoid exception when user goes too far
         double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
 
         horizontalWindSlicer->SetHeight((int) current_slice);
