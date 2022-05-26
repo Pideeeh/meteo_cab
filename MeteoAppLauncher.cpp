@@ -14,6 +14,7 @@ int main(int, char *[]) {
     cout << "Press '4' to toggle the wind and move the slice vertically with your mouse" << endl;
     cout << "Press '5' to toggle the divergence and move the slice vertically with your mouse" << endl;
     cout << "Press '6' to toggle the rain rendering" << endl;
+    cout << "Press '7' to toggle the LIC rendering" << endl;
 
 
     app.Launch();
