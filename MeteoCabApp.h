@@ -13,6 +13,7 @@
 #include "vtkInteractorStyleTrackballCamera.h"
 #include "vtkNamedColors.h"
 #include "vtkColorTransferFunction.h"
+#include "vtkPNGReader.h"
 #include "vtkXMLImageDataReader.h"
 #include "vtkImageReslice.h"
 #include "vtkDoubleArray.h"
@@ -26,6 +27,7 @@
 #include "vtkPolyDataMapper.h"
 #include "vtkScalarBarActor.h"
 #include "vtkOutlineFilter.h"
+#include "vtkImageSliceMapper.h"
 #include "vtkProperty.h"
 #include "vtkOBJReader.h"
 #include "vtkPlaneWidget.h"
@@ -39,6 +41,7 @@
 #include "vtkMaskPoints.h"
 #include "vtkGlyphSource2D.h"
 #include "vtkGradientFilter.h"
+#include "vtkInteractorStyleFlight.h"
 #include "vtkGlyph2D.h"
 
 #include "utils.h"
@@ -47,15 +50,18 @@
 #include "BetterVtkSlicer.h"
 #include "streamline_functions.h"
 
+#define interactorBaseClass vtkInteractorStyleTrackballCamera
+#define interactorBaseClass2 vtkInteractorStyleFlight
+
 using namespace std;
 
 
-class MeteoCabApp : public vtkInteractorStyleTrackballCamera {
+class MeteoCabApp : public interactorBaseClass {
     static MeteoCabApp *New() {
         return new MeteoCabApp();
     }
 
-vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
+vtkTypeMacro(MeteoCabApp, interactorBaseClass);
     vtkNew<vtkNamedColors> colors;
 
     /*
@@ -143,6 +149,15 @@ vtkTypeMacro(MeteoCabApp, vtkInteractorStyleTrackballCamera);
     vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> qrRaycastMapper;
 
     /*
+     * LIC
+     *
+     */
+
+    bool licVisible = false;
+    vtkSmartPointer<vtkImageData> licImage;
+    vtkSmartPointer<vtkImageMapper3D> licImageMapper;
+    vtkSmartPointer<vtkImageActor> licActor;
+    /*
  * UI Variables
  * */
     vtkSmartPointer<vtkPlaneWidget> planeWidget;
@@ -168,6 +183,7 @@ public:
         renderer->AddActor(divergenceActor);
         renderer->AddActor2D(heightmapLegend);
         renderer->AddActor2D(divLegend);
+        renderer->AddActor(licActor);
         renderer->AddActor(horizontalWindVectorActor);
         renderer->AddActor(streamlinesActor);
         renderer->SetBackground(0.7, 0.7, 0.7);
@@ -246,7 +262,7 @@ public:
         // color initialization based on height
         // ----------------------------------------------------------------
         double height_min = 0;//initialization on values of our height data
-        double height_max = 10*0.244379;
+        double height_max = 10 * 0.244379;
         double numColors = 20;
 
         // ----------------------------------------------------------------
@@ -261,7 +277,7 @@ public:
         heightmapColors = vtkNew<vtkFloatArray>();
         heightmapColors->SetNumberOfValues(577290);
         for (int i = 0; i < heightmapColors->GetNumberOfValues(); i++) {//go over vertices
-            heightmapColors->SetValue(i, 10*heightmapDataMapper->GetInput()->GetPoint(i)[2]);
+            heightmapColors->SetValue(i, 10 * heightmapDataMapper->GetInput()->GetPoint(i)[2]);
             if (heightmapDataMapper->GetInput()->GetPoint(i)[2] == 0) {//sea
                 heightmapColors->SetValue(i, NAN);
             }
@@ -304,7 +320,7 @@ public:
         double origin[3];
         origin[0] = 0;
         origin[1] = 0;
-        origin[2] = pressureData->GetOrigin()[2]- 106.81226*0.0001;
+        origin[2] = pressureData->GetOrigin()[2] - 106.81226 * 0.0001;
         heightmapActor->SetPosition(origin);
     }
 
@@ -337,7 +353,7 @@ public:
 
     void InitializeHorizontalWind() {
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-        reader->SetFileName(getDataPath("/data/2d_wind_full.vti").c_str());
+        reader->SetFileName(getDataPath("/data/2d_wind_full_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
         horizontalWindData = reader->GetOutput();
         horizontalWindData->GetPointData()->SetActiveVectors("2d_velocity");
@@ -474,7 +490,7 @@ public:
     void ComputeWindDivergence() {
 
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-        reader->SetFileName(getDataPath("/data/2d_wind_full.vti").c_str());
+        reader->SetFileName(getDataPath("/data/2d_wind_full_regularly_resampled_downsampled.vti").c_str());
         reader->Update();
 
         vtkNew<vtkGradientFilter> gradientFilter;
@@ -663,6 +679,7 @@ public:
         ComputeWindDivergence();
         InitializeClouds();
         InitializeRain();
+        InitializeLICRendering();
         StartVisualization();
     }
 
@@ -686,7 +703,8 @@ public:
         double planeOrigin[3];
         plane->GetOrigin(planeOrigin);
 
-        double sliceHeight = std::min(bounds[5],std::max(planeOrigin[2],bounds[4]));//avoid exception when user goes too far
+        double sliceHeight = std::min(bounds[5],
+                                      std::max(planeOrigin[2], bounds[4]));//avoid exception when user goes too far
         double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
 
         pressureSliceMapper->SetSlicePlane(plane);
@@ -755,7 +773,8 @@ public:
 
         double bounds[6];
         horizontalWindData->GetBounds(bounds);
-        double sliceHeight = std::min(bounds[5], std::max(planeOrigin[2], bounds[4]));//avoid exception when user goes too far
+        double sliceHeight = std::min(bounds[5],
+                                      std::max(planeOrigin[2], bounds[4]));//avoid exception when user goes too far
         double current_slice = (sliceHeight - dataOrigin[2]) / dataSpacing;
 
         horizontalWindSlicer->SetHeight((int) current_slice);
@@ -794,6 +813,8 @@ public:
     void PlaneWidgetUpdated() {
         UpdatePressureSlicer();
         UpdateWindSlice();
+
+        UpdateLICSlice(false);
 
         renderWindow->Render();
     }
@@ -855,7 +876,7 @@ public:
             PlaneWidgetUpdated();
             planeWidgetInteraction->updated = false;
         }
-        vtkInteractorStyleTrackballCamera::OnLeftButtonUp();
+        interactorBaseClass::OnLeftButtonUp();
     }
 
     void ToggleWindMode() {
@@ -879,6 +900,78 @@ public:
         divLegend->SetVisibility(divergenceVisible);
     }
 
+    void ToggleLICRendering() {
+        licVisible = !licVisible;
+        licActor->SetVisibility(licVisible);
+
+    }
+
+    void InitializeLICRendering() {
+        UpdateLICSlice(true);
+
+    }
+
+    void UpdateLICSlice(bool init) {
+        licImage = vtkNew<vtkImageData>();
+        licImageMapper = vtkNew<vtkImageSliceMapper>();
+
+
+        int selectedSlice = 0;
+        if (!init) {
+            vtkNew<vtkPlane> plane;
+            planeWidget->GetPlane(plane);
+            double planeOrigin[3];
+            plane->GetOrigin(planeOrigin);
+
+            double dataOrigin[3];
+            pressureData->GetOrigin(dataOrigin);
+
+            double dataSpacing = pressureData->GetSpacing()[2];
+            double bounds[6];
+            pressureData->GetBounds(bounds);
+            double sliceHeight = std::min(bounds[5],
+                                          std::max(planeOrigin[2], bounds[4]));//avoid exception when user goes too far
+            double currentSlice = (sliceHeight - dataOrigin[2]) / dataSpacing;
+
+            selectedSlice = currentSlice;
+        }
+
+        vtkNew<vtkXMLImageDataReader> reader;
+        reader->SetFileName(getDataPath("/data/LIC/lic" + std::to_string(selectedSlice) + ".vti").c_str());
+        reader->Update();
+        licImage = reader->GetOutput();
+
+        int dimensions[3];
+        licImage->GetDimensions(dimensions);
+        double dataBounds[6];
+        double dataSpacing[3];
+        pressureData->GetBounds(dataBounds);
+        pressureData->GetSpacing(dataSpacing);
+        double spacing[3];
+        spacing[0] = (dataBounds[1] - dataBounds[0]) / (double) dimensions[0];
+        spacing[1] = (dataBounds[3] - dataBounds[2]) / (double) dimensions[1];
+        spacing[2] = 0;
+
+        double origin[3];
+        pressureData->GetOrigin(origin);
+        origin[2] += dataSpacing[2] * selectedSlice;
+        licImage->SetSpacing(spacing);
+        licImage->SetOrigin(origin);
+
+        licImageMapper->SetInputData(licImage);
+
+        if(!init){
+            renderer->RemoveActor(licActor);
+        }
+        licActor = vtkNew<vtkImageActor>();
+        licActor->SetMapper(licImageMapper);
+        licActor->SetVisibility(licVisible);
+        licActor->Update();
+        if(!init){
+            renderer->AddActor(licActor);
+        }
+    }
+
     void OnKeyPress() override {
         // Get the keypress
         vtkRenderWindowInteractor *rwi = this->Interactor;
@@ -899,8 +992,12 @@ public:
         if (key == "5") {
             ToggleDivergence();
         }
+
         if (key == "6") {
             ToggleRainRendering();
+        }
+        if (key == "7") {
+            ToggleLICRendering();
         }
 
         if (key == "h") {
@@ -916,7 +1013,7 @@ public:
 
 
         // Forward events
-        vtkInteractorStyleTrackballCamera::OnKeyPress();
+        interactorBaseClass::OnKeyPress();
     }
 
     double pressure_value_lower = 75000.0;

@@ -101,7 +101,7 @@ vtkTypeMacro(PlaneWidgetInteraction, vtkCommand);
     bool updated = false;
     vtkSmartPointer<vtkImageData> dataSpace;
     vtkSmartPointer<vtkPlaneWidget> widget;
-    vtkSmartPointer<vtkInteractorStyleTrackballCamera> app;
+    vtkSmartPointer<vtkInteractorStyle> app;
 };
 
 #endif //VIS2021_PLANEWIDGETINTERACTION_H
