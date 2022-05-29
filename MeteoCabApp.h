@@ -49,6 +49,10 @@
 #include "PlaneWidgetInteraction.h"
 #include "BetterVtkSlicer.h"
 #include "streamline_functions.h"
+#include "vtkLegendBoxActor.h"
+#include "vtkCubeSource.h"
+#include "vtkTextProperty.h"
+
 
 #define interactorBaseClass vtkInteractorStyleTrackballCamera
 #define interactorBaseClass2 vtkInteractorStyleFlight
@@ -67,7 +71,7 @@ vtkTypeMacro(MeteoCabApp, interactorBaseClass);
     /*
      * Pressure Variables
      * */
-    bool pressureVisible = true;
+    bool pressureVisible = false;
     vtkSmartPointer<vtkImageData> pressureData;
     vtkSmartPointer<vtkImageData> slice;
     vtkSmartPointer<vtkImageData> pressureDataColors;
@@ -140,6 +144,8 @@ vtkTypeMacro(MeteoCabApp, interactorBaseClass);
     vtkSmartPointer<vtkVolume> clwActor;
     vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> clwRaycastMapper;
 
+    vtkSmartPointer<vtkLegendBoxActor> cli_clwLegend;
+
     /*
     * Rain variables
     * */
@@ -147,6 +153,8 @@ vtkTypeMacro(MeteoCabApp, interactorBaseClass);
     vtkSmartPointer<vtkImageData> qrData;
     vtkSmartPointer<vtkVolume> qrActor;
     vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> qrRaycastMapper;
+
+    vtkSmartPointer<vtkLegendBoxActor> qrLegend;
 
     /*
      * LIC
@@ -179,7 +187,9 @@ public:
         renderer->AddActor(heightmapActor);
         renderer->AddActor(cliActor);
         renderer->AddActor(clwActor);
+        renderer->AddActor(cli_clwLegend);
         renderer->AddActor(qrActor);
+        renderer->AddActor(qrLegend);
         renderer->AddActor(divergenceActor);
         renderer->AddActor2D(heightmapLegend);
         renderer->AddActor2D(divLegend);
@@ -562,7 +572,7 @@ public:
         divLegend->SetNumberOfLabels(3);
         divLegend->SetTitle("divergence");
         divLegend->SetVerticalTitleSeparation(6);
-        divLegend->GetPositionCoordinate()->SetValue(0.93, 0.1);
+        divLegend->GetPositionCoordinate()->SetValue(0.77, 0.1);
         divLegend->SetWidth(0.05);
 
         //divergenceRaycastMapper->SetLookupTable(divLookupTable);//link lookup table
@@ -636,6 +646,42 @@ public:
         clwActor->SetMapper(clwRaycastMapper);
         clwActor->SetProperty(clwVolumeProperty);
         clwActor->SetVisibility(clwVisible);
+
+
+        //add categorical legend
+        cli_clwLegend = vtkSmartPointer<vtkLegendBoxActor>::New();
+
+        cli_clwLegend->SetNumberOfEntries(2);
+
+        double color[4];
+
+        vtkNew<vtkCubeSource> legendBox;
+        legendBox->Update();
+        color[0] = 1.0;
+        color[1] = 1.0;
+        color[2] = 1.0;
+        color[3] = 1.0;
+        cli_clwLegend->SetEntry(0, legendBox->GetOutput(), "Cloud ice content", color);
+
+        color[0] = 0.4;
+        color[1] = 0.4;
+        color[2] = 0.4;
+        color[3] = 1.0;
+        cli_clwLegend->SetEntry(1, legendBox->GetOutput(), "Cloud water content", color);
+
+        // place legend
+        cli_clwLegend->GetPositionCoordinate()->SetValue(0.02, 0.8);
+        cli_clwLegend->GetPosition2Coordinate()->SetValue(0.16, 0.12);
+
+        cli_clwLegend->UseBackgroundOn();
+        double background[4];
+        background[0] = 0.0;
+        background[1] = 0.0;
+        background[2] = 0.0;
+        background[3] = 1.0;
+        //colors->GetColor("SlateGray", background);
+        cli_clwLegend->SetBackgroundColor(background);
+        cli_clwLegend->SetVisibility(qrVisible);
     }
 
     void InitializeRain() {
@@ -668,6 +714,34 @@ public:
         qrActor->SetMapper(qrRaycastMapper);
         qrActor->SetProperty(qrVolumeProperty);
         qrActor->SetVisibility(qrVisible);
+
+        //add categorical legend
+        qrLegend = vtkSmartPointer<vtkLegendBoxActor>::New();
+
+        qrLegend->SetNumberOfEntries(1);
+
+        double color[4];
+
+        vtkNew<vtkCubeSource> legendBox;
+        legendBox->Update();
+        color[0] = 0.4;
+        color[1] = 0.6;
+        color[2] = 0.99;
+        color[3] = 1.0;
+        qrLegend->SetEntry(0, legendBox->GetOutput(), "Rain mixing ratio   ", color);
+
+        // place legend
+        qrLegend->GetPositionCoordinate()->SetValue(0.02, 0.73);
+        qrLegend->GetPosition2Coordinate()->SetValue(0.16, 0.06);
+
+        qrLegend->UseBackgroundOn();
+        double background[4];
+        background[0] = 0.0;
+        background[1] = 0.0;
+        background[2] = 0.0;
+        background[3] = 1.0;
+        qrLegend->SetBackgroundColor(background);
+        qrLegend->SetVisibility(qrVisible);
     }
 
 
@@ -741,6 +815,7 @@ public:
         pressureLegend->SetVerticalTitleSeparation(6);
         pressureLegend->GetPositionCoordinate()->SetValue(0.93, 0.1);
         pressureLegend->SetWidth(0.05);
+        pressureLegend->SetVisibility(pressureVisible);
 
         renderer->AddActor2D(pressureLegend);
 
@@ -842,12 +917,17 @@ public:
 
         clwActor->SetVisibility(clwVisible);
 
+        cli_clwLegend->SetVisibility(cliVisible);
+
     }
 
     void ToggleRainRendering() {
         qrVisible = !qrVisible;
 
         qrActor->SetVisibility(qrVisible);
+
+        qrLegend->SetVisibility(qrVisible);
+
     }
 
     void HandlePressureInputs(const string &key) {
